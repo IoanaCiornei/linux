@@ -471,6 +471,19 @@ int dpni_get_statistics(struct fsl_mc_io	*mc_io,
 #define DPNI_LINK_OPT_ASYM_PAUSE	0x0000000000000008ULL
 
 /**
+ * Advertised link speeds
+ */
+#define DPNI_ADVERTISED_10BASET_FULL           BIT_ULL(0)
+#define DPNI_ADVERTISED_100BASET_FULL          BIT_ULL(1)
+#define DPNI_ADVERTISED_1000BASET_FULL         BIT_ULL(2)
+#define DPNI_ADVERTISED_10000BASET_FULL        BIT_ULL(4)
+
+/**
+ * Advertise auto-negotiation enabled
+ */
+#define DPNI_ADVERTISED_AUTONEG                BIT_ULL(3)
+
+/**
  * struct - Structure representing DPNI link configuration
  * @rate: Rate
  * @options: Mask of available options; use 'DPNI_LINK_OPT_<X>' values
@@ -478,12 +491,18 @@ int dpni_get_statistics(struct fsl_mc_io	*mc_io,
 struct dpni_link_cfg {
 	u32 rate;
 	u64 options;
+	u64 advertising;
 };
 
 int dpni_set_link_cfg(struct fsl_mc_io			*mc_io,
 		      u32				cmd_flags,
 		      u16				token,
 		      const struct dpni_link_cfg	*cfg);
+
+int dpni_set_link_cfg_v2(struct fsl_mc_io		*mc_io,
+			 u32				cmd_flags,
+			 u16				token,
+			 const struct dpni_link_cfg	*cfg);
 
 /**
  * struct dpni_link_state - Structure representing DPNI link state
@@ -494,13 +513,21 @@ int dpni_set_link_cfg(struct fsl_mc_io			*mc_io,
 struct dpni_link_state {
 	u32	rate;
 	u64	options;
+	u64	supported;
+	u64	advertising;
 	int	up;
+	int	state_valid;
 };
 
 int dpni_get_link_state(struct fsl_mc_io	*mc_io,
 			u32			cmd_flags,
 			u16			token,
 			struct dpni_link_state	*state);
+
+int dpni_get_link_state_v2(struct fsl_mc_io	*mc_io,
+			   u32			cmd_flags,
+			   u16			token,
+			   struct dpni_link_state	*state);
 
 int dpni_set_max_frame_length(struct fsl_mc_io	*mc_io,
 			      u32		cmd_flags,
