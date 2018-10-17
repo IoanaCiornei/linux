@@ -11,9 +11,11 @@
 #define DPNI_VER_MAJOR				7
 #define DPNI_VER_MINOR				0
 #define DPNI_CMD_BASE_VERSION			1
+#define DPNI_CMD_2ND_VERSION			2
 #define DPNI_CMD_ID_OFFSET			4
 
 #define DPNI_CMD(id)	(((id) << DPNI_CMD_ID_OFFSET) | DPNI_CMD_BASE_VERSION)
+#define DPNI_CMD_V2(id)	(((id) << DPNI_CMD_ID_OFFSET) | DPNI_CMD_2ND_VERSION)
 
 #define DPNI_CMDID_OPEN					DPNI_CMD(0x801)
 #define DPNI_CMDID_CLOSE				DPNI_CMD(0x800)
@@ -42,9 +44,11 @@
 #define DPNI_CMDID_GET_QDID				DPNI_CMD(0x210)
 #define DPNI_CMDID_GET_TX_DATA_OFFSET			DPNI_CMD(0x212)
 #define DPNI_CMDID_GET_LINK_STATE			DPNI_CMD(0x215)
+#define DPNI_CMDID_GET_LINK_STATE_V2			DPNI_CMD_V2(0x215)
 #define DPNI_CMDID_SET_MAX_FRAME_LENGTH			DPNI_CMD(0x216)
 #define DPNI_CMDID_GET_MAX_FRAME_LENGTH			DPNI_CMD(0x217)
 #define DPNI_CMDID_SET_LINK_CFG				DPNI_CMD(0x21A)
+#define DPNI_CMDID_SET_LINK_CFG_V2			DPNI_CMD_V2(0x21A)
 #define DPNI_CMDID_SET_TX_SHAPING			DPNI_CMD(0x21B)
 
 #define DPNI_CMDID_SET_MCAST_PROMISC			DPNI_CMD(0x220)
@@ -294,8 +298,22 @@ struct dpni_cmd_set_link_cfg {
 	__le64 options;
 };
 
+struct dpni_cmd_set_link_cfg_v2 {
+	/* cmd word 0 */
+	__le64 pad0;
+	/* cmd word 1 */
+	__le32 rate;
+	__le32 pad1;
+	/* cmd word 2 */
+	__le64 options;
+	/* cmd word 3 */
+	__le64 advertising;
+};
+
 #define DPNI_LINK_STATE_SHIFT		0
 #define DPNI_LINK_STATE_SIZE		1
+#define DPNI_STATE_VALID_SHIFT		1
+#define DPNI_STATE_VALID_SIZE		1
 
 struct dpni_rsp_get_link_state {
 	/* response word 0 */
@@ -308,6 +326,23 @@ struct dpni_rsp_get_link_state {
 	__le32 pad2;
 	/* response word 2 */
 	__le64 options;
+};
+
+struct dpni_rsp_get_link_state_v2 {
+	/* response word 0 */
+	__le32 pad0;
+	/* from LSB: up:1, valid:1 */
+	u8 flags;
+	u8 pad1[3];
+	/* response word 1 */
+	__le32 rate;
+	__le32 pad2;
+	/* response word 2 */
+	__le64 options;
+	/* cmd word 3 */
+	__le64 supported;
+	/* cmd word 4 */
+	__le64 advertising;
 };
 
 struct dpni_cmd_set_max_frame_length {
