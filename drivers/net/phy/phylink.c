@@ -44,6 +44,7 @@ struct phylink {
 	const struct phylink_mac_ops *ops;
 	struct notifier_block *nb;
 	struct blocking_notifier_head notifier_chain;
+	unsigned int old_link_state:1;
 
 	unsigned long phylink_disable_state; /* bitmask of disables */
 	struct phy_device *phydev;
@@ -499,6 +500,7 @@ static void phylink_resolve(struct work_struct *w)
 	struct phylink *pl = container_of(w, struct phylink, resolve);
 	struct phylink_link_state link_state;
 	struct net_device *ndev = pl->netdev;
+	int link_changed;
 
 	mutex_lock(&pl->state_mutex);
 	if (pl->phylink_disable_state) {
@@ -548,10 +550,13 @@ static void phylink_resolve(struct work_struct *w)
 		}
 	}
 
-	/* Take the branch without checking the carrier status
-	 * if there is no netdevice.
-	 */
-	if (!pl->ops || link_state.link != netif_carrier_ok(ndev)) {
+	if (pl->ops)
+		link_changed = (link_state.link != netif_carrier_ok(ndev));
+	else
+		link_changed = (link_state.link != pl->old_link_state);
+
+	if (link_changed) {
+		pl->old_link_state = link_state.link;
 		if (!link_state.link)
 			phylink_mac_link_down(pl);
 		else
