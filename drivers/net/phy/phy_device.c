@@ -1290,7 +1290,7 @@ int phy_attach_direct(struct net_device *dev, struct phy_device *phydev,
 	if (err)
 		goto error;
 
-	phy_resume(phydev);
+	phy_suspend(phydev);
 	phy_led_triggers_register(phydev);
 
 	return err;
