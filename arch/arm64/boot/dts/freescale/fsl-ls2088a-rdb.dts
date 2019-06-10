@@ -23,6 +23,22 @@
 	};
 };
 
+&dpmac1 {
+	phy-handle = <&mdio1_phy1>;
+};
+
+&dpmac2 {
+	phy-handle = <&mdio1_phy2>;
+};
+
+&dpmac3 {
+	phy-handle = <&mdio1_phy3>;
+};
+
+&dpmac4 {
+	phy-handle = <&mdio1_phy4>;
+};
+
 &dpmac5 {
 	phy-handle = <&mdio2_phy1>;
 };
@@ -37,6 +53,31 @@
 
 &dpmac8 {
 	phy-handle = <&mdio2_phy4>;
+};
+
+&emdio1 {
+	status = "okay";
+
+	mdio1_phy1: emdio1_phy@1 {
+		compatible = "ethernet-phy-id13e5.1002";
+		reg = <0x10>;
+		phy-connection-type = "10gbase-r";
+	};
+	mdio1_phy2: emdio1_phy@2 {
+		compatible = "ethernet-phy-id13e5.1002";
+		reg = <0x11>;
+		phy-connection-type = "10gbase-r";
+	};
+	mdio1_phy3: emdio1_phy@3 {
+		compatible = "ethernet-phy-id13e5.1002";
+		reg = <0x12>;
+		phy-connection-type = "10gbase-r";
+	};
+	mdio1_phy4: emdio1_phy@4 {
+		compatible = "ethernet-phy-id13e5.1002";
+		reg = <0x13>;
+		phy-connection-type = "10gbase-r";
+	};
 };
 
 &emdio2 {
