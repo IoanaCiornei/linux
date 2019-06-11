@@ -301,6 +301,64 @@
 			status = "disabled";
 		};
 
+		pcs_mdio3: mdio@8c0f000 {
+			compatible = "fsl,fman-memac-mdio";
+			reg = <0x0 0x8c0f000 0x0 0x1000>;
+			little-endian;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+
+			pcs3_0: pcs-phy@0 {
+				reg = <0>;
+				compatible = "fsl,pcs-phy";
+			};
+
+			pcs3_1: pcs-phy@1 {
+				reg = <1>;
+				compatible = "fsl,pcs-phy";
+			};
+
+			pcs3_2: pcs-phy@2 {
+				reg = <2>;
+				compatible = "fsl,pcs-phy";
+			};
+
+			pcs3_3: pcs-phy@3 {
+				reg = <3>;
+				compatible = "fsl,pcs-phy";
+			};
+		};
+
+		pcs_mdio7: mdio@8c1f000 {
+			compatible = "fsl,fman-memac-mdio";
+			reg = <0x0 0x8c1f000 0x0 0x1000>;
+			little-endian;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+
+			pcs4_0: pcs-phy@0 {
+				reg = <0>;
+				compatible = "fsl,pcs-phy";
+			};
+
+			pcs4_1: pcs-phy@1 {
+				reg = <1>;
+				compatible = "fsl,pcs-phy";
+			};
+
+			pcs4_2: pcs-phy@2 {
+				reg = <2>;
+				compatible = "fsl,pcs-phy";
+			};
+
+			pcs4_3: pcs-phy@3 {
+				reg = <3>;
+				compatible = "fsl,pcs-phy";
+			};
+		};
+
 		gpio0: gpio@2300000 {
 			compatible = "fsl,ls1088a-gpio", "fsl,qoriq-gpio";
 			reg = <0x0 0x2300000 0x0 0x10000>;
@@ -763,41 +821,49 @@
 				dpmac3: dpmac@3 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <3>;
+					pcs-handle = <&pcs3_0>;
 				};
 
 				dpmac4: dpmac@4 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <4>;
+					pcs-handle = <&pcs3_1>;
 				};
 
 				dpmac5: dpmac@5 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <5>;
+					pcs-handle = <&pcs3_2>;
 				};
 
 				dpmac6: dpmac@6 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <6>;
+					pcs-handle = <&pcs3_3>;
 				};
 
 				dpmac7: dpmac@7 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <7>;
+					pcs-handle = <&pcs7_0>;
 				};
 
 				dpmac8: dpmac@8 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <8>;
+					pcs-handle = <&pcs7_1>;
 				};
 
 				dpmac9: dpmac@9 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <9>;
+					pcs-handle = <&pcs7_2>;
 				};
 
 				dpmac10: dpmac@a {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <0xa>;
+					pcs-handle = <&pcs7_3>;
 				};
 			};
 		};
