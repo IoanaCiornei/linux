@@ -301,6 +301,20 @@
 			status = "disabled";
 		};
 
+		pcs_mdio3: mdio@8c0f000 {
+			compatible = "fsl,fman-memac-mdio";
+			reg = <0x0 0x8c0f000 0x0 0x1000>;
+			little-endian;
+			status = "disabled";
+		};
+
+		pcs_mdio7: mdio@8c1f000 {
+			compatible = "fsl,fman-memac-mdio";
+			reg = <0x0 0x8c1f000 0x0 0x1000>;
+			little-endian;
+			status = "disabled";
+		};
+
 		gpio0: gpio@2300000 {
 			compatible = "fsl,ls1088a-gpio", "fsl,qoriq-gpio";
 			reg = <0x0 0x2300000 0x0 0x10000>;
@@ -763,41 +777,49 @@
 				dpmac3: dpmac@3 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <3>;
+					pcs-mdio = <&pcs_mdio3>;
 				};
 
 				dpmac4: dpmac@4 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <4>;
+					pcs-mdio = <&pcs_mdio3>;
 				};
 
 				dpmac5: dpmac@5 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <5>;
+					pcs-mdio = <&pcs_mdio3>;
 				};
 
 				dpmac6: dpmac@6 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <6>;
+					pcs-mdio = <&pcs_mdio3>;
 				};
 
 				dpmac7: dpmac@7 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <7>;
+					pcs-mdio = <&pcs_mdio7>;
 				};
 
 				dpmac8: dpmac@8 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <8>;
+					pcs-mdio = <&pcs_mdio7>;
 				};
 
 				dpmac9: dpmac@9 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <9>;
+					pcs-mdio = <&pcs_mdio7>;
 				};
 
 				dpmac10: dpmac@a {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <0xa>;
+					pcs-mdio = <&pcs_mdio7>;
 				};
 			};
 		};
