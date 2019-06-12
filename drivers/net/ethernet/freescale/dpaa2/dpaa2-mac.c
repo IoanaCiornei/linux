@@ -125,6 +125,7 @@ static void dpaa2_mac_ksettings_change(struct dpaa2_mac_priv *priv)
 	}
 
 	phylink_ethtool_ksettings_set(priv->phylink, &priv->kset);
+	phylink_ethtool_nway_reset(priv->phylink);
 }
 
 static irqreturn_t dpaa2_mac_irq_handler(int irq_num, void *arg)
