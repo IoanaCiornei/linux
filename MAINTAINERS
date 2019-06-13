@@ -4935,6 +4935,7 @@ L:	netdev@vger.kernel.org
 S:	Maintained
 F:	drivers/net/ethernet/freescale/dpaa2/dpaa2-mac*
 F:	drivers/net/ethernet/freescale/dpaa2/dpmac*
+F:	Documentation/networking/device_drivers/freescale/dpaa2/dpmac-driver.rst
 
 DPT_I2O SCSI RAID DRIVER
 M:	Adaptec OEM Raid Solutions <aacraid@microsemi.com>
