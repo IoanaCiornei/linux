@@ -69,6 +69,8 @@
 #define DPSW_CMDID_FDB_SET_LEARNING_MODE    DPSW_CMD_ID(0x088)
 #define DPSW_CMDID_FDB_DUMP                 DPSW_CMD_ID(0x08A)
 
+#define DPSW_CMDID_CTRL_IF_GET_ATTR         DPSW_CMD_ID(0x0A0)
+
 /* Macros for accessing command fields smaller than 1byte */
 #define DPSW_MASK(field)        \
 	GENMASK(DPSW_##field##_SHIFT + DPSW_##field##_SIZE - 1, \
@@ -362,6 +364,13 @@ struct dpsw_cmd_fdb_dump {
 
 struct dpsw_rsp_fdb_dump {
 	__le16 num_entries;
+};
+
+struct dpsw_rsp_ctrl_if_get_attr {
+	__le64 pad;
+	__le32 rx_fqid;
+	__le32 rx_err_fqid;
+	__le32 tx_err_conf_fqid;
 };
 
 struct dpsw_rsp_get_api_version {

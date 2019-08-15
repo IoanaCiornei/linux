@@ -37,9 +37,18 @@
 #define ETHSW_MAX_FRAME_LENGTH	(DPAA2_MFL - VLAN_ETH_HLEN - ETH_FCS_LEN)
 #define ETHSW_L2_MAX_FRM(mtu)	((mtu) + VLAN_ETH_HLEN + ETH_FCS_LEN)
 
+/* Number of receive queues (one RX and one TX_CONF) */
+#define ETHSW_RX_NUM_FQS		2
+
 extern const struct ethtool_ops ethsw_port_ethtool_ops;
 
 struct ethsw_core;
+
+struct ethsw_fq {
+	struct ethsw_core *ethsw;
+	enum dpsw_queue_type type;
+	u32 fqid;
+};
 
 /* Per port private data */
 struct ethsw_port_priv {
@@ -66,6 +75,12 @@ struct ethsw_core {
 
 	u8				vlans[VLAN_VID_MASK + 1];
 	bool				learning;
+
+	struct ethsw_fq			fq[ETHSW_RX_NUM_FQS];
 };
 
+static inline bool ethsw_has_ctrl_if(struct ethsw_core *ethsw)
+{
+	return !(ethsw->sw_attr.options & DPSW_OPT_CTRL_IF_DIS);
+}
 #endif	/* __ETHSW_H */

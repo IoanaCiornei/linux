@@ -1357,6 +1357,44 @@ err_switchdev_nb:
 	return err;
 }
 
+static int ethsw_setup_fqs(struct ethsw_core *ethsw)
+{
+	struct dpsw_ctrl_if_attr ctrl_if_attr;
+	struct device *dev = ethsw->dev;
+	int i = 0;
+	int err;
+
+	err = dpsw_ctrl_if_get_attributes(ethsw->mc_io, 0,
+					  ethsw->dpsw_handle,
+					  &ctrl_if_attr);
+	if (err) {
+		dev_err(dev, "dpsw_ctrl_if_get_attributes() = %d\n", err);
+		return err;
+	}
+
+	ethsw->fq[i].fqid = ctrl_if_attr.rx_fqid;
+	ethsw->fq[i].ethsw = ethsw;
+	ethsw->fq[i++].type = DPSW_QUEUE_RX;
+
+	ethsw->fq[i].fqid = ctrl_if_attr.tx_err_conf_fqid;
+	ethsw->fq[i].ethsw = ethsw;
+	ethsw->fq[i++].type = DPSW_QUEUE_TX_ERR_CONF;
+
+	return 0;
+}
+
+static int ethsw_ctrl_if_setup(struct ethsw_core *ethsw)
+{
+	int err;
+
+	/* setup FQs for Rx and Tx Conf */
+	err = ethsw_setup_fqs(ethsw);
+	if (err)
+		return err;
+
+	return 0;
+}
+
 static int ethsw_init(struct fsl_mc_device *sw_dev)
 {
 	struct device *dev = &sw_dev->dev;
@@ -1440,6 +1478,12 @@ static int ethsw_init(struct fsl_mc_device *sw_dev)
 	if (!ethsw_owq) {
 		err = -ENOMEM;
 		goto err_close;
+	}
+
+	if (ethsw_has_ctrl_if(ethsw)) {
+		err = ethsw_ctrl_if_setup(ethsw);
+		if (err)
+			goto err_destroy_ordered_workqueue;
 	}
 
 	err = ethsw_register_notifier(dev);
