@@ -1494,6 +1494,61 @@ static void ethsw_destroy_rings(struct ethsw_core *ethsw)
 		dpaa2_io_store_destroy(ethsw->fq[i].store);
 }
 
+static int ethsw_setup_dpio(struct ethsw_core *ethsw)
+{
+	struct dpaa2_io_notification_ctx *nctx;
+	struct dpsw_ctrl_if_queue_cfg queue_cfg;
+	int err, i, j;
+
+	for (i = 0; i < ETHSW_RX_NUM_FQS; i++) {
+		nctx = &ethsw->fq[i].nctx;
+
+		nctx->is_cdan = 0;
+		nctx->id = ethsw->fq[i].fqid;
+		nctx->desired_cpu = DPAA2_IO_ANY_CPU;
+
+		err = dpaa2_io_service_register(NULL, nctx, ethsw->dev);
+		if (err) {
+			err = -EPROBE_DEFER;
+			goto err_register;
+		}
+
+		queue_cfg.options = DPSW_CTRL_IF_QUEUE_OPT_DEST |
+				    DPSW_CTRL_IF_QUEUE_OPT_USER_CTX;
+		queue_cfg.dest_cfg.dest_type = DPSW_CTRL_IF_DEST_DPIO;
+		queue_cfg.dest_cfg.dest_id = nctx->dpio_id;
+		queue_cfg.dest_cfg.priority = 0;
+		queue_cfg.user_ctx = nctx->qman64;
+
+		err = dpsw_ctrl_if_set_queue(ethsw->mc_io, 0,
+					     ethsw->dpsw_handle,
+					     ethsw->fq[i].type,
+					     &queue_cfg);
+		if (err)
+			goto err_set_queue;
+	}
+
+	return 0;
+
+err_set_queue:
+	dpaa2_io_service_deregister(NULL, nctx, ethsw->dev);
+err_register:
+	for (j = 0; j < i; j++)
+		dpaa2_io_service_deregister(NULL, &ethsw->fq[j].nctx,
+					    ethsw->dev);
+
+	return err;
+}
+
+static void ethsw_free_dpio(struct ethsw_core *ethsw)
+{
+	int i;
+
+	for (i = 0; i < ETHSW_RX_NUM_FQS; i++)
+		dpaa2_io_service_deregister(NULL, &ethsw->fq[i].nctx,
+					    ethsw->dev);
+}
+
 static int ethsw_ctrl_if_setup(struct ethsw_core *ethsw)
 {
 	int err;
@@ -1512,8 +1567,14 @@ static int ethsw_ctrl_if_setup(struct ethsw_core *ethsw)
 	if (err)
 		goto err_free_dpbp;
 
+	err = ethsw_setup_dpio(ethsw);
+	if (err)
+		goto err_destroy_rings;
+
 	return 0;
 
+err_destroy_rings:
+	ethsw_destroy_rings(ethsw);
 err_free_dpbp:
 	ethsw_free_dpbp(ethsw);
 
@@ -1695,6 +1756,7 @@ static void ethsw_takedown(struct fsl_mc_device *sw_dev)
 
 static void ethsw_ctrl_if_teardown(struct ethsw_core *ethsw)
 {
+	ethsw_free_dpio(ethsw);
 	ethsw_destroy_rings(ethsw);
 	ethsw_free_dpbp(ethsw);
 }

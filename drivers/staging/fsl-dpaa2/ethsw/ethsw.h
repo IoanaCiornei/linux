@@ -60,6 +60,7 @@ struct ethsw_core;
 struct ethsw_fq {
 	struct ethsw_core *ethsw;
 	enum dpsw_queue_type type;
+	struct dpaa2_io_notification_ctx nctx;
 	struct dpaa2_io_store *store;
 	u32 fqid;
 };
