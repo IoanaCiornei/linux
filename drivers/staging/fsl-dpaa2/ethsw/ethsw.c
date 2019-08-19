@@ -1686,6 +1686,78 @@ err_close:
 	return err;
 }
 
+/* Add an ACL to redirect frames with specific destination MAC address to
+ * control interface
+ */
+static int ethsw_acl_mac_to_ctr_if(struct ethsw_port_priv *port_priv,
+				   const char *mac)
+{
+	struct device *dev = port_priv->netdev->dev.parent;
+	struct net_device *netdev = port_priv->netdev;
+	struct dpsw_acl_entry_cfg acl_entry_cfg;
+	struct dpsw_acl_fields *acl_h, *acl_m;
+	struct dpsw_acl_key acl_key;
+	u8 *cmd_buff;
+	int err = 0;
+
+	acl_h = &acl_key.match;
+	acl_m = &acl_key.mask;
+
+	if (port_priv->acl_cnt >= DPAA2_ETHSW_PORT_MAX_ACL_ENTRIES) {
+		netdev_err(netdev, "ACL table full\n");
+		return -ENOMEM;
+	}
+
+	/* Match destination MAC address */
+	memset(&acl_key, 0, sizeof(acl_key));
+	ether_addr_copy(acl_h->l2_dest_mac, mac);
+	eth_broadcast_addr(acl_m->l2_dest_mac);
+
+	cmd_buff = kzalloc(DPAA2_ETHSW_PORT_ACL_KEY_SIZE, GFP_KERNEL);
+	if (!cmd_buff)
+		return -ENOMEM;
+	dpsw_acl_prepare_entry_cfg(&acl_key, cmd_buff);
+
+	/* Add entry */
+	memset(&acl_entry_cfg, 0, sizeof(acl_entry_cfg));
+	acl_entry_cfg.precedence = port_priv->acl_cnt;
+	acl_entry_cfg.result.action = DPSW_ACL_ACTION_REDIRECT_TO_CTRL_IF;
+
+	acl_entry_cfg.key_iova = dma_map_single(dev, cmd_buff,
+						DPAA2_ETHSW_PORT_ACL_KEY_SIZE,
+						DMA_TO_DEVICE);
+	if (unlikely(dma_mapping_error(dev, acl_entry_cfg.key_iova))) {
+		netdev_err(netdev, "DMA mapping failed\n");
+		err = -EFAULT;
+		goto err_map_key;
+	}
+
+	err = dpsw_acl_add_entry(port_priv->ethsw_data->mc_io, 0,
+				 port_priv->ethsw_data->dpsw_handle,
+				 port_priv->acl_id, &acl_entry_cfg);
+	if (err) {
+		netdev_err(netdev, "dpsw_acl_add_entry() failed %d\n", err);
+		goto err_add_entry;
+	}
+
+	port_priv->acl_cnt++;
+
+err_add_entry:
+	dma_unmap_single(dev, acl_entry_cfg.key_iova,
+			 DPAA2_ETHSW_PORT_ACL_KEY_SIZE, DMA_TO_DEVICE);
+err_map_key:
+	kfree(cmd_buff);
+
+	return err;
+}
+
+static int ethsw_port_set_ctrl_if_acl(struct ethsw_port_priv *port_priv)
+{
+	const char stp_mac[ETH_ALEN] = {0x01, 0x80, 0xC2, 0x00, 0x00, 0x00};
+
+	return ethsw_acl_mac_to_ctr_if(port_priv, stp_mac);
+}
+
 static int ethsw_port_init(struct ethsw_port_priv *port_priv, u16 port)
 {
 	struct ethsw_core *ethsw = port_priv->ethsw_data;
@@ -1733,12 +1805,19 @@ static int ethsw_port_init(struct ethsw_port_priv *port_priv, u16 port)
 			      port_priv->acl_id, &acl_if_cfg);
 	if (err) {
 		netdev_err(netdev, "dpsw_acl_add_if err %d\n", err);
-		goto err_acl_add;
+		goto err_remove_acl;
 	}
+
+	err = ethsw_port_set_ctrl_if_acl(port_priv);
+	if (err)
+		goto err_remove_acl_if;
 
 	return 0;
 
-err_acl_add:
+err_remove_acl_if:
+	dpsw_acl_remove_if(ethsw->mc_io, 0, ethsw->dpsw_handle,
+			   port_priv->acl_id, &acl_if_cfg);
+err_remove_acl:
 	dpsw_acl_remove(ethsw->mc_io, 0, ethsw->dpsw_handle,
 			port_priv->acl_id);
 
