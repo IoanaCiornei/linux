@@ -651,6 +651,47 @@ struct dpsw_fdb_attr {
 	u16 max_fdb_mc_groups;
 };
 
+/**
+ * struct dpsw_acl_cfg - ACL Configuration
+ * @max_entries: Number of FDB entries
+ */
+struct dpsw_acl_cfg {
+	u16 max_entries;
+};
+
+int dpsw_acl_add(struct fsl_mc_io *mc_io,
+		 u32 cmd_flags,
+		 u16 token,
+		 u16 *acl_id,
+		 const struct dpsw_acl_cfg *cfg);
+
+int dpsw_acl_remove(struct fsl_mc_io *mc_io,
+		    u32 cmd_flags,
+		    u16 token,
+		    u16 acl_id);
+
+/**
+ * struct dpsw_acl_if_cfg - List of interfaces to associate with ACL table
+ * @num_ifs: Number of interfaces
+ * @if_id: List of interfaces
+ */
+struct dpsw_acl_if_cfg {
+	u16 num_ifs;
+	u16 if_id[DPSW_MAX_IF];
+};
+
+int dpsw_acl_add_if(struct fsl_mc_io *mc_io,
+		    u32 cmd_flags,
+		    u16 token,
+		    u16 acl_id,
+		    const struct dpsw_acl_if_cfg *cfg);
+
+int dpsw_acl_remove_if(struct fsl_mc_io *mc_io,
+		       u32 cmd_flags,
+		       u16 token,
+		       u16 acl_id,
+		       const struct dpsw_acl_if_cfg *cfg);
+
 int dpsw_get_api_version(struct fsl_mc_io *mc_io,
 			 u32 cmd_flags,
 			 u16 *major_ver,

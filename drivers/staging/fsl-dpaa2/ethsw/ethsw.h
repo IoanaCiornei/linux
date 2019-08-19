@@ -53,6 +53,8 @@
 /* Dequeue store size */
 #define DPAA2_ETHSW_STORE_SIZE		16
 
+#define DPAA2_ETHSW_PORT_MAX_ACL_ENTRIES	16
+
 extern const struct ethtool_ops ethsw_port_ethtool_ops;
 
 struct ethsw_core;
@@ -77,6 +79,7 @@ struct ethsw_port_priv {
 	u8			vlans[VLAN_VID_MASK + 1];
 	u16			pvid;
 	struct net_device	*bridge_dev;
+	u16			acl_id;
 };
 
 /* Switch data */

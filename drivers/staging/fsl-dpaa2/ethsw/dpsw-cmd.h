@@ -69,6 +69,11 @@
 #define DPSW_CMDID_FDB_SET_LEARNING_MODE    DPSW_CMD_ID(0x088)
 #define DPSW_CMDID_FDB_DUMP                 DPSW_CMD_ID(0x08A)
 
+#define DPSW_CMDID_ACL_ADD                  DPSW_CMD_ID(0x090)
+#define DPSW_CMDID_ACL_REMOVE               DPSW_CMD_ID(0x091)
+#define DPSW_CMDID_ACL_ADD_IF               DPSW_CMD_ID(0x094)
+#define DPSW_CMDID_ACL_REMOVE_IF            DPSW_CMD_ID(0x095)
+
 #define DPSW_CMDID_CTRL_IF_GET_ATTR         DPSW_CMD_ID(0x0A0)
 #define DPSW_CMDID_CTRL_IF_SET_POOLS        DPSW_CMD_ID(0x0A1)
 #define DPSW_CMDID_CTRL_IF_SET_QUEUE        DPSW_CMD_ID(0x0A6)
@@ -398,6 +403,28 @@ struct dpsw_cmd_ctrl_if_set_queue {
 	u8 qtype;
 	__le64 user_ctx;
 	__le32 options;
+};
+
+struct dpsw_cmd_acl_add {
+	__le16 pad;
+	__le16 max_entries;
+};
+
+struct dpsw_rsp_acl_add {
+	__le16 acl_id;
+};
+
+struct dpsw_cmd_acl_remove {
+	__le16 acl_id;
+};
+
+struct dpsw_cmd_acl_if {
+	/* cmd word 0 */
+	__le16 acl_id;
+	__le16 num_ifs;
+	__le32 pad;
+	/* cmd word 1 */
+	__le64 if_id[4];
 };
 
 struct dpsw_rsp_get_api_version {

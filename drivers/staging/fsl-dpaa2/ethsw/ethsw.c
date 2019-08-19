@@ -1688,9 +1688,11 @@ err_close:
 
 static int ethsw_port_init(struct ethsw_port_priv *port_priv, u16 port)
 {
-	struct net_device *netdev = port_priv->netdev;
 	struct ethsw_core *ethsw = port_priv->ethsw_data;
+	struct net_device *netdev = port_priv->netdev;
+	struct dpsw_acl_if_cfg acl_if_cfg;
 	struct dpsw_vlan_if_cfg vcfg;
+	struct dpsw_acl_cfg acl_cfg;
 	int err;
 
 	/* Switch starts with all ports configured to VLAN 1. Need to
@@ -1715,6 +1717,30 @@ static int ethsw_port_init(struct ethsw_port_priv *port_priv, u16 port)
 				  DEFAULT_VLAN_ID, &vcfg);
 	if (err)
 		netdev_err(netdev, "dpsw_vlan_remove_if err %d\n", err);
+
+	/* create the ACL table for this particular interface */
+	acl_cfg.max_entries = DPAA2_ETHSW_PORT_MAX_ACL_ENTRIES,
+	err = dpsw_acl_add(ethsw->mc_io, 0, ethsw->dpsw_handle,
+			   &port_priv->acl_id, &acl_cfg);
+	if (err) {
+		netdev_err(netdev, "dpsw_acl_add err %d\n", err);
+		return err;
+	}
+
+	acl_if_cfg.num_ifs = 1,
+	acl_if_cfg.if_id[0] = port_priv->idx;
+	err = dpsw_acl_add_if(ethsw->mc_io, 0, ethsw->dpsw_handle,
+			      port_priv->acl_id, &acl_if_cfg);
+	if (err) {
+		netdev_err(netdev, "dpsw_acl_add_if err %d\n", err);
+		goto err_acl_add;
+	}
+
+	return 0;
+
+err_acl_add:
+	dpsw_acl_remove(ethsw->mc_io, 0, ethsw->dpsw_handle,
+			port_priv->acl_id);
 
 	return err;
 }
@@ -1761,6 +1787,21 @@ static void ethsw_ctrl_if_teardown(struct ethsw_core *ethsw)
 	ethsw_free_dpbp(ethsw);
 }
 
+static void ethsw_port_takedown(struct ethsw_port_priv *port_priv)
+{
+	struct dpsw_acl_if_cfg acl_if_cfg;
+
+	acl_if_cfg.num_ifs = 1,
+	acl_if_cfg.if_id[0] = port_priv->idx;
+	dpsw_acl_remove_if(port_priv->ethsw_data->mc_io, 0,
+			   port_priv->ethsw_data->dpsw_handle,
+			   port_priv->acl_id, &acl_if_cfg);
+
+	dpsw_acl_remove(port_priv->ethsw_data->mc_io, 0,
+			port_priv->ethsw_data->dpsw_handle,
+			port_priv->acl_id);
+}
+
 static int ethsw_remove(struct fsl_mc_device *sw_dev)
 {
 	struct ethsw_port_priv *port_priv;
@@ -1783,6 +1824,7 @@ static int ethsw_remove(struct fsl_mc_device *sw_dev)
 	for (i = 0; i < ethsw->sw_attr.num_ifs; i++) {
 		port_priv = ethsw->ports[i];
 		unregister_netdev(port_priv->netdev);
+		ethsw_port_takedown(port_priv);
 		free_netdev(port_priv->netdev);
 	}
 	kfree(ethsw->ports);
