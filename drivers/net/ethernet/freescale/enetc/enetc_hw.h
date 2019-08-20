@@ -319,8 +319,15 @@ struct enetc_hw {
 };
 
 /* general register accessors */
-#define enetc_rd_reg(reg)	ioread32((reg))
-#define enetc_wr_reg(reg, val)	iowrite32((val), (reg))
+#define enetc_rd_reg(reg)	enetc_rd_reg_wa((reg))
+#define enetc_wr_reg(reg, val)	enetc_wr_reg_wa((reg), (val))
+
+/* accessors for data-path, due to MDIO issue on LS1028 these should be called
+ * only under the rwlock_t enetc_mdio_lock
+ */
+#define enetc_rd_reg_hot(reg)	ioread32((reg))
+#define enetc_wr_reg_hot(reg, val)	iowrite32((val), (reg))
+
 #ifdef ioread64
 #define enetc_rd_reg64(reg)	ioread64((reg))
 #else
@@ -339,12 +346,57 @@ static inline u64 enetc_rd_reg64(void __iomem *reg)
 }
 #endif
 
+extern rwlock_t enetc_mdio_lock;
+
+static inline u32 enetc_rd_reg_wa(void *reg)
+{
+	u32 val;
+
+	read_lock(&enetc_mdio_lock);
+	val = ioread32(reg);
+	read_unlock(&enetc_mdio_lock);
+
+	return val;
+}
+
+static inline void enetc_wr_reg_wa(void *reg, u32 val)
+{
+	read_lock(&enetc_mdio_lock);
+	iowrite32(val, reg);
+	read_unlock(&enetc_mdio_lock);
+}
+
+static inline u32 enetc_rd_reg_wa_single(void *reg)
+{
+	unsigned long flags;
+	u32 val;
+
+	write_lock_irqsave(&enetc_mdio_lock, flags);
+	val = ioread32(reg);
+	write_unlock_irqrestore(&enetc_mdio_lock, flags);
+
+	return val;
+}
+
+static inline void enetc_wr_reg_wa_single(void *reg, u32 val)
+{
+	unsigned long flags;
+
+	write_lock_irqsave(&enetc_mdio_lock, flags);
+	iowrite32(val, reg);
+	write_unlock_irqrestore(&enetc_mdio_lock, flags);
+}
+
 #define enetc_rd(hw, off)		enetc_rd_reg((hw)->reg + (off))
 #define enetc_wr(hw, off, val)		enetc_wr_reg((hw)->reg + (off), val)
 #define enetc_rd64(hw, off)		enetc_rd_reg64((hw)->reg + (off))
 /* port register accessors - PF only */
-#define enetc_port_rd(hw, off)		enetc_rd_reg((hw)->port + (off))
-#define enetc_port_wr(hw, off, val)	enetc_wr_reg((hw)->port + (off), val)
+#define enetc_port_rd(hw, off)		enetc_rd_reg_wa((hw)->port + (off))
+#define enetc_port_wr(hw, off, val)	enetc_wr_reg_wa((hw)->port + (off), val)
+#define enetc_port_rd_single(hw, off)		enetc_rd_reg_wa_single(\
+							(hw)->port + (off))
+#define enetc_port_wr_single(hw, off, val)	enetc_wr_reg_wa_single(\
+							(hw)->port + (off), val)
 /* global register accessors - PF only */
 #define enetc_global_rd(hw, off)	enetc_rd_reg((hw)->global + (off))
 #define enetc_global_wr(hw, off, val)	enetc_wr_reg((hw)->global + (off), val)
