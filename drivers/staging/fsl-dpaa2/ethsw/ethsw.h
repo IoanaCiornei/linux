@@ -70,6 +70,19 @@
  */
 #define DPAA2_ETHSW_SWP_BUSY_RETRIES	1000
 
+/* Hardware annotation buffer size */
+#define DPAA2_ETHSW_HWA_SIZE		64
+/* Software annotation buffer size */
+#define DPAA2_ETHSW_SWA_SIZE		64
+
+#define DPAA2_ETHSW_TX_BUF_ALIGN	64
+
+#define DPAA2_ETHSW_TX_DATA_OFFSET \
+	(DPAA2_ETHSW_HWA_SIZE + DPAA2_ETHSW_SWA_SIZE)
+
+#define DPAA2_ETHSW_NEEDED_HEADROOM \
+	(DPAA2_ETHSW_TX_DATA_OFFSET + DPAA2_ETHSW_TX_BUF_ALIGN)
+
 extern const struct ethtool_ops ethsw_port_ethtool_ops;
 
 struct ethsw_core;
@@ -98,6 +111,7 @@ struct ethsw_port_priv {
 	struct net_device	*bridge_dev;
 	u16			acl_id;
 	u8			acl_cnt;
+	u16			tx_qdid;
 };
 
 /* Switch data */

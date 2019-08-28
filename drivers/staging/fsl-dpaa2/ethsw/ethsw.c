@@ -455,6 +455,7 @@ static int port_change_mtu(struct net_device *netdev, int mtu)
 static int port_carrier_state_sync(struct net_device *netdev)
 {
 	struct ethsw_port_priv *port_priv = netdev_priv(netdev);
+	struct ethsw_core *ethsw = port_priv->ethsw_data;
 	struct dpsw_link_state state;
 	int err;
 
@@ -469,10 +470,15 @@ static int port_carrier_state_sync(struct net_device *netdev)
 	WARN_ONCE(state.up > 1, "Garbage read into link_state");
 
 	if (state.up != port_priv->link_state) {
-		if (state.up)
+		if (state.up) {
 			netif_carrier_on(netdev);
-		else
+			if (ethsw_has_ctrl_if(ethsw))
+				netif_tx_start_all_queues(netdev);
+		} else {
 			netif_carrier_off(netdev);
+			if (ethsw_has_ctrl_if(ethsw))
+				netif_tx_stop_all_queues(netdev);
+		}
 		port_priv->link_state = state.up;
 	}
 	return 0;
@@ -525,8 +531,10 @@ static int port_open(struct net_device *netdev)
 	struct ethsw_core *ethsw = port_priv->ethsw_data;
 	int err;
 
-	/* No need to allow Tx as control interface is disabled */
-	netif_tx_stop_all_queues(netdev);
+	if (!ethsw_has_ctrl_if(port_priv->ethsw_data)) {
+		/* No need to allow Tx as control interface is disabled */
+		netif_tx_stop_all_queues(netdev);
+	}
 
 	err = dpsw_if_enable(port_priv->ethsw_data->mc_io, 0,
 			     port_priv->ethsw_data->dpsw_handle,
@@ -572,15 +580,6 @@ static int port_stop(struct net_device *netdev)
 	ethsw_disable_ctrl_if_napi(ethsw);
 
 	return 0;
-}
-
-static netdev_tx_t port_dropframe(struct sk_buff *skb,
-				  struct net_device *netdev)
-{
-	/* we don't support I/O for now, drop the frame */
-	dev_kfree_skb_any(skb);
-
-	return NETDEV_TX_OK;
 }
 
 static int swdev_get_port_parent_id(struct net_device *dev,
@@ -737,6 +736,137 @@ err_map:
 	return err;
 }
 
+static int ethsw_build_single_fd(struct ethsw_core *ethsw,
+				 struct sk_buff *skb,
+				 struct dpaa2_fd *fd)
+{
+	struct device *dev = ethsw->dev;
+	struct sk_buff **skbh;
+	dma_addr_t addr;
+	u8 *buff_start;
+	void *hwa;
+
+	buff_start = PTR_ALIGN(skb->data - DPAA2_ETHSW_TX_DATA_OFFSET -
+			       DPAA2_ETHSW_TX_BUF_ALIGN,
+			       DPAA2_ETHSW_TX_BUF_ALIGN);
+
+	/* Clear FAS to have consistent values for TX confirmation. It is
+	 * located in the first 8 bytes of the buffer's hardware annotation
+	 * area
+	 */
+	hwa = buff_start + DPAA2_ETHSW_SWA_SIZE;
+	memset(hwa, 0, 8);
+
+	/* Store a backpointer to the skb at the beginning of the buffer
+	 * (in the private data area) such that we can release it
+	 * on Tx confirm
+	 */
+	skbh = (struct sk_buff **)buff_start;
+	*skbh = skb;
+
+	addr = dma_map_single(dev, buff_start,
+			      skb_tail_pointer(skb) - buff_start,
+			      DMA_TO_DEVICE);
+	if (unlikely(dma_mapping_error(dev, addr)))
+		return -ENOMEM;
+
+	/* Setup the FD fields */
+	memset(fd, 0, sizeof(*fd));
+
+	dpaa2_fd_set_addr(fd, addr);
+	dpaa2_fd_set_offset(fd, (u16)(skb->data - buff_start));
+	dpaa2_fd_set_len(fd, skb->len);
+	dpaa2_fd_set_format(fd, dpaa2_fd_single);
+
+	return 0;
+}
+
+static void ethsw_free_fd(const struct ethsw_core *ethsw,
+			  const struct dpaa2_fd *fd)
+{
+	struct device *dev = ethsw->dev;
+	unsigned char *buffer_start;
+	dma_addr_t fd_addr;
+	struct sk_buff **skbh, *skb;
+
+	fd_addr = dpaa2_fd_get_addr(fd);
+	skbh = dpaa2_iova_to_virt(ethsw->iommu_domain, fd_addr);
+
+	skb = *skbh;
+	buffer_start = (unsigned char *)skbh;
+
+	dma_unmap_single(dev, fd_addr,
+			 skb_tail_pointer(skb) - buffer_start,
+			 DMA_TO_DEVICE);
+
+	/* Move on with skb release */
+	dev_kfree_skb(skb);
+}
+
+static netdev_tx_t ethsw_port_tx(struct sk_buff *skb,
+				 struct net_device *net_dev)
+{
+	struct ethsw_port_priv *port_priv = netdev_priv(net_dev);
+	struct ethsw_core *ethsw = port_priv->ethsw_data;
+	int retries = DPAA2_ETHSW_SWP_BUSY_RETRIES;
+	struct dpaa2_fd fd;
+	int err;
+
+	if (!ethsw_has_ctrl_if(ethsw)) {
+		goto err_free_skb;
+	}
+
+	if (unlikely(skb_headroom(skb) < DPAA2_ETHSW_NEEDED_HEADROOM)) {
+		struct sk_buff *ns;
+
+		ns = skb_realloc_headroom(skb, DPAA2_ETHSW_NEEDED_HEADROOM);
+		if (unlikely(!ns)) {
+			netdev_err(net_dev, "Error reallocating skb headroom\n");
+			goto err_free_skb;
+		}
+		dev_kfree_skb(skb);
+		skb = ns;
+	}
+
+	/* We'll be holding a back-reference to the skb until Tx confirmation */
+	skb = skb_unshare(skb, GFP_ATOMIC);
+	if (unlikely(!skb)) {
+		/* skb_unshare() has already freed the skb */
+		netdev_err(net_dev, "Error copying the socket buffer\n");
+		goto err_exit;
+	}
+
+	if (skb_is_nonlinear(skb)) {
+		netdev_err(net_dev, "No support for non-linear SKBs!\n");
+		goto err_free_skb;
+	}
+
+	err = ethsw_build_single_fd(ethsw, skb, &fd);
+	if (unlikely(err)) {
+		netdev_err(net_dev, "ethsw_build_*_fd() %d\n", err);
+		goto err_free_skb;
+	}
+
+	do {
+		err = dpaa2_io_service_enqueue_qd(NULL,
+						  port_priv->tx_qdid,
+						  8, 0, &fd);
+		retries--;
+	} while (err == -EBUSY && retries);
+
+	if (unlikely(err < 0)) {
+		ethsw_free_fd(ethsw, &fd);
+		goto err_exit;
+	}
+
+	return NETDEV_TX_OK;
+
+err_free_skb:
+	dev_kfree_skb(skb);
+err_exit:
+	return NETDEV_TX_OK;
+}
+
 static const struct net_device_ops ethsw_port_ops = {
 	.ndo_open		= port_open,
 	.ndo_stop		= port_stop,
@@ -750,7 +880,7 @@ static const struct net_device_ops ethsw_port_ops = {
 	.ndo_fdb_del		= port_fdb_del,
 	.ndo_fdb_dump		= port_fdb_dump,
 
-	.ndo_start_xmit		= port_dropframe,
+	.ndo_start_xmit		= ethsw_port_tx,
 	.ndo_get_port_parent_id	= swdev_get_port_parent_id,
 	.ndo_get_phys_port_name = port_get_phys_name,
 };
@@ -1413,28 +1543,6 @@ err_switchdev_blocking_nb:
 err_switchdev_nb:
 	unregister_netdevice_notifier(&port_nb);
 	return err;
-}
-
-static void ethsw_free_fd(const struct ethsw_core *ethsw,
-			  const struct dpaa2_fd *fd)
-{
-	struct device *dev = ethsw->dev;
-	unsigned char *buffer_start;
-	dma_addr_t fd_addr;
-	struct sk_buff **skbh, *skb;
-
-	fd_addr = dpaa2_fd_get_addr(fd);
-	skbh = dpaa2_iova_to_virt(ethsw->iommu_domain, fd_addr);
-
-	skb = *skbh;
-	buffer_start = (unsigned char *)skbh;
-
-	dma_unmap_single(dev, fd_addr,
-			 skb_tail_pointer(skb) - buffer_start,
-			 DMA_TO_DEVICE);
-
-	/* Move on with skb release */
-	dev_kfree_skb(skb);
 }
 
 /* Build a linear skb based on a single-buffer frame descriptor */
@@ -2161,6 +2269,7 @@ static int ethsw_port_init(struct ethsw_port_priv *port_priv, u16 port)
 	struct ethsw_core *ethsw = port_priv->ethsw_data;
 	struct net_device *netdev = port_priv->netdev;
 	struct dpsw_acl_if_cfg acl_if_cfg;
+	struct dpsw_if_attr dpsw_if_attr;
 	struct dpsw_vlan_if_cfg vcfg;
 	struct dpsw_acl_cfg acl_cfg;
 	int err;
@@ -2209,6 +2318,14 @@ static int ethsw_port_init(struct ethsw_port_priv *port_priv, u16 port)
 	err = ethsw_port_set_ctrl_if_acl(port_priv);
 	if (err)
 		goto err_remove_acl_if;
+
+	err = dpsw_if_get_attributes(ethsw->mc_io, 0, ethsw->dpsw_handle,
+				     port_priv->idx, &dpsw_if_attr);
+	if (err) {
+		netdev_err(netdev, "dpsw_if_get_attributes err %d\n", err);
+		goto err_remove_acl_if;
+	}
+	port_priv->tx_qdid = dpsw_if_attr.qdid;
 
 	return 0;
 
