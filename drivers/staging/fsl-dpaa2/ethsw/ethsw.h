@@ -19,6 +19,8 @@
 #include <linux/if_bridge.h>
 #include <linux/fsl/mc.h>
 
+#include <soc/fsl/dpaa2-io.h>
+
 #include "dpsw.h"
 
 /* Number of IRQs supported */
@@ -48,6 +50,9 @@
 #define DPAA2_ETHSW_RX_BUF_SIZE \
 	(DPAA2_ETHSW_RX_BUF_RAW_SIZE- DPAA2_ETHSW_RX_BUF_TAILROOM)
 
+/* Dequeue store size */
+#define DPAA2_ETHSW_STORE_SIZE		16
+
 extern const struct ethtool_ops ethsw_port_ethtool_ops;
 
 struct ethsw_core;
@@ -55,6 +60,7 @@ struct ethsw_core;
 struct ethsw_fq {
 	struct ethsw_core *ethsw;
 	enum dpsw_queue_type type;
+	struct dpaa2_io_store *store;
 	u32 fqid;
 };
 

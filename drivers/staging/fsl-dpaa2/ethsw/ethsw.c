@@ -1460,6 +1460,40 @@ static void ethsw_free_dpbp(struct ethsw_core *ethsw)
 	fsl_mc_object_free(ethsw->dpbp_dev);
 }
 
+static int ethsw_alloc_rings(struct ethsw_core *ethsw)
+{
+	int i;
+
+	for (i = 0; i < ETHSW_RX_NUM_FQS; i++) {
+		ethsw->fq[i].store =
+			dpaa2_io_store_create(DPAA2_ETHSW_STORE_SIZE,
+					      ethsw->dev);
+		if (!ethsw->fq[i].store) {
+			dev_err(ethsw->dev, "dpaa2_io_store_create failed\n");
+			goto err_ring;
+		}
+	}
+
+	return 0;
+
+err_ring:
+	for (i = 0; i < ETHSW_RX_NUM_FQS; i++) {
+		if (!ethsw->fq[i].store)
+			break;
+		dpaa2_io_store_destroy(ethsw->fq[i].store);
+	}
+
+	return -ENOMEM;
+}
+
+static void ethsw_destroy_rings(struct ethsw_core *ethsw)
+{
+	int i;
+
+	for (i = 0; i < ETHSW_RX_NUM_FQS; i++)
+		dpaa2_io_store_destroy(ethsw->fq[i].store);
+}
+
 static int ethsw_ctrl_if_setup(struct ethsw_core *ethsw)
 {
 	int err;
@@ -1474,7 +1508,16 @@ static int ethsw_ctrl_if_setup(struct ethsw_core *ethsw)
 	if (err)
 		return err;
 
+	err = ethsw_alloc_rings(ethsw);
+	if (err)
+		goto err_free_dpbp;
+
 	return 0;
+
+err_free_dpbp:
+	ethsw_free_dpbp(ethsw);
+
+	return err;
 }
 
 static int ethsw_init(struct fsl_mc_device *sw_dev)
@@ -1652,6 +1695,7 @@ static void ethsw_takedown(struct fsl_mc_device *sw_dev)
 
 static void ethsw_ctrl_if_teardown(struct ethsw_core *ethsw)
 {
+	ethsw_destroy_rings(ethsw);
 	ethsw_free_dpbp(ethsw);
 }
 
