@@ -144,6 +144,13 @@ int dpmac_set_link_state(struct fsl_mc_io *mc_io,
 	cmd_params->supported = cpu_to_le64(link_state->supported);
 	cmd_params->advertising = cpu_to_le64(link_state->advertising);
 
+	printk(KERN_ERR "dpmac_set_link_state: full duplex = %d | autoneg = %d, PAUSE = %d, ASYM_PAUSE = %d | rate = %d\n",
+	       link_state->options & DPMAC_LINK_OPT_HALF_DUPLEX ? 0 : 1,
+	       link_state->options & DPMAC_LINK_OPT_AUTONEG ? 1 : 0,
+	       link_state->options & DPMAC_LINK_OPT_PAUSE ? 1 : 0,
+	       link_state->options & DPMAC_LINK_OPT_ASYM_PAUSE ? 1 : 0,
+	       link_state->rate);
+
 	/* send command to mc*/
 	return mc_send_command(mc_io, &cmd);
 }
