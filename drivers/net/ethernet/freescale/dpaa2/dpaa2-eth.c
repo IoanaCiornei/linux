@@ -1288,9 +1288,7 @@ static int link_state_update(struct dpaa2_eth_priv *priv)
 
 	if (state.up) {
 		netif_carrier_on(priv->net_dev);
-		netif_tx_start_all_queues(priv->net_dev);
 	} else {
-		netif_tx_stop_all_queues(priv->net_dev);
 		netif_carrier_off(priv->net_dev);
 	}
 
@@ -1319,12 +1317,6 @@ static int dpaa2_eth_open(struct net_device *net_dev)
 	}
 
 	if (!priv->mac) {
-		/* We'll only start the txqs when the link is actually ready;
-		 * make sure we don't race against the link up notification,
-		 * which may come immediately after dpni_enable();
-		 */
-		netif_tx_stop_all_queues(net_dev);
-
 		/* Also, explicitly set carrier off, otherwise
 		 * netif_carrier_ok() will return true and cause 'ip link show'
 		 * to report the LOWER_UP flag, even though the link
@@ -1426,7 +1418,6 @@ static int dpaa2_eth_stop(struct net_device *net_dev)
 	int retries = 10;
 
 	if (!priv->mac) {
-		netif_tx_stop_all_queues(net_dev);
 		netif_carrier_off(net_dev);
 	} else {
 		phylink_stop(priv->mac->phylink);
@@ -3390,6 +3381,10 @@ static int dpaa2_eth_connect_mac(struct dpaa2_eth_priv *priv)
 	}
 	priv->mac = mac;
 
+	if (priv->net_dev->flags & IFF_UP) {
+		phylink_start(priv->mac->phylink);
+	}
+
 	return 0;
 }
 
@@ -3419,9 +3414,6 @@ static irqreturn_t dpni_irq0_handler_thread(int irq_num, void *arg)
 		return IRQ_HANDLED;
 	}
 
-	if (status & DPNI_IRQ_EVENT_LINK_CHANGED)
-		link_state_update(netdev_priv(net_dev));
-
 	if (status & DPNI_IRQ_EVENT_ENDPOINT_CHANGED) {
 		set_mac_addr(netdev_priv(net_dev));
 		update_tx_fqids(priv);
@@ -3433,6 +3425,9 @@ static irqreturn_t dpni_irq0_handler_thread(int irq_num, void *arg)
 			dpaa2_eth_connect_mac(priv);
 		rtnl_unlock();
 	}
+
+	if (status & DPNI_IRQ_EVENT_LINK_CHANGED)
+		link_state_update(netdev_priv(net_dev));
 
 	return IRQ_HANDLED;
 }
