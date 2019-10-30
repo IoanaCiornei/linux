@@ -70,6 +70,7 @@
 #define DPSW_CMDID_FDB_DUMP                 DPSW_CMD_ID(0x08A)
 
 #define DPSW_CMDID_CTRL_IF_GET_ATTR         DPSW_CMD_ID(0x0A0)
+#define DPSW_CMDID_CTRL_IF_SET_POOLS        DPSW_CMD_ID(0x0A1)
 
 /* Macros for accessing command fields smaller than 1byte */
 #define DPSW_MASK(field)        \
@@ -79,6 +80,8 @@
 	((var) |= (((val) << DPSW_##field##_SHIFT) & DPSW_MASK(field)))
 #define dpsw_get_field(var, field)      \
 	(((var) & DPSW_MASK(field)) >> DPSW_##field##_SHIFT)
+#define dpsw_set_bit(var, bit, val) \
+	((var) |= (((u64)(val) << (bit)) & GENMASK((bit), (bit))))
 #define dpsw_get_bit(var, bit) \
 	(((var)  >> (bit)) & GENMASK(0, 0))
 
@@ -371,6 +374,15 @@ struct dpsw_rsp_ctrl_if_get_attr {
 	__le32 rx_fqid;
 	__le32 rx_err_fqid;
 	__le32 tx_err_conf_fqid;
+};
+
+struct dpsw_cmd_ctrl_if_set_pools {
+	u8 num_dpbp;
+	/* from LSB: POOL0_BACKUP_POOL:1 ... POOL7_BACKUP_POOL */
+	u8 backup_pool;
+	__le16 pad;
+	__le32 dpbp_id[8];
+	__le16 buffer_size[8];
 };
 
 struct dpsw_rsp_get_api_version {

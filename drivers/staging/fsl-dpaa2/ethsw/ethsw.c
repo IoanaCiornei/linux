@@ -1383,12 +1383,94 @@ static int ethsw_setup_fqs(struct ethsw_core *ethsw)
 	return 0;
 }
 
+static int ethsw_setup_dpbp(struct ethsw_core *ethsw)
+{
+	struct dpsw_ctrl_if_pools_cfg dpsw_ctrl_if_pools_cfg = { 0 };
+	struct device *dev = ethsw->dev;
+	struct fsl_mc_device *dpbp_dev;
+	struct dpbp_attr dpbp_attrs;
+	int err;
+
+	err = fsl_mc_object_allocate(to_fsl_mc_device(dev), FSL_MC_POOL_DPBP,
+				     &dpbp_dev);
+	if (err) {
+		if (err == -ENXIO)
+			err = -EPROBE_DEFER;
+		else
+			dev_err(dev, "DPBP device allocation failed\n");
+		return err;
+	}
+	ethsw->dpbp_dev = dpbp_dev;
+
+	err = dpbp_open(ethsw->mc_io, 0, dpbp_dev->obj_desc.id,
+			&dpbp_dev->mc_handle);
+	if (err) {
+		dev_err(dev, "dpbp_open() failed\n");
+		goto err_open;
+	}
+
+	err = dpbp_reset(ethsw->mc_io, 0, dpbp_dev->mc_handle);
+	if (err) {
+		dev_err(dev, "dpbp_reset() failed\n");
+		goto err_reset;
+	}
+
+	err = dpbp_enable(ethsw->mc_io, 0, dpbp_dev->mc_handle);
+	if (err) {
+		dev_err(dev, "dpbp_enable() failed\n");
+		goto err_enable;
+	}
+
+	err = dpbp_get_attributes(ethsw->mc_io, 0, dpbp_dev->mc_handle,
+				  &dpbp_attrs);
+	if (err) {
+		dev_err(dev, "dpbp_get_attributes() failed\n");
+		goto err_get_attr;
+	}
+
+	dpsw_ctrl_if_pools_cfg.num_dpbp = 1;
+	dpsw_ctrl_if_pools_cfg.pools[0].dpbp_id = dpbp_attrs.id;
+	dpsw_ctrl_if_pools_cfg.pools[0].buffer_size = DPAA2_ETHSW_RX_BUF_SIZE;
+	dpsw_ctrl_if_pools_cfg.pools[0].backup_pool = 0;
+
+	err = dpsw_ctrl_if_set_pools(ethsw->mc_io, 0, ethsw->dpsw_handle,
+				     &dpsw_ctrl_if_pools_cfg);
+	if (err) {
+		dev_err(dev, "dpsw_ctrl_if_set_pools() failed\n");
+		goto err_get_attr;
+	}
+	ethsw->bpid = dpbp_attrs.id;
+
+	return 0;
+
+err_get_attr:
+	dpbp_disable(ethsw->mc_io, 0, dpbp_dev->mc_handle);
+err_enable:
+err_reset:
+	dpbp_close(ethsw->mc_io, 0, dpbp_dev->mc_handle);
+err_open:
+	fsl_mc_object_free(dpbp_dev);
+	return err;
+}
+
+static void ethsw_free_dpbp(struct ethsw_core *ethsw)
+{
+	dpbp_disable(ethsw->mc_io, 0, ethsw->dpbp_dev->mc_handle);
+	dpbp_close(ethsw->mc_io, 0, ethsw->dpbp_dev->mc_handle);
+	fsl_mc_object_free(ethsw->dpbp_dev);
+}
+
 static int ethsw_ctrl_if_setup(struct ethsw_core *ethsw)
 {
 	int err;
 
 	/* setup FQs for Rx and Tx Conf */
 	err = ethsw_setup_fqs(ethsw);
+	if (err)
+		return err;
+
+	/* setup the buffer poll needed on the Rx path */
+	err = ethsw_setup_dpbp(ethsw);
 	if (err)
 		return err;
 
@@ -1568,6 +1650,11 @@ static void ethsw_takedown(struct fsl_mc_device *sw_dev)
 		dev_warn(dev, "dpsw_close err %d\n", err);
 }
 
+static void ethsw_ctrl_if_teardown(struct ethsw_core *ethsw)
+{
+	ethsw_free_dpbp(ethsw);
+}
+
 static int ethsw_remove(struct fsl_mc_device *sw_dev)
 {
 	struct ethsw_port_priv *port_priv;
@@ -1577,6 +1664,9 @@ static int ethsw_remove(struct fsl_mc_device *sw_dev)
 
 	dev = &sw_dev->dev;
 	ethsw = dev_get_drvdata(dev);
+
+	if (ethsw_has_ctrl_if(ethsw))
+		ethsw_ctrl_if_teardown(ethsw);
 
 	ethsw_teardown_irqs(sw_dev);
 

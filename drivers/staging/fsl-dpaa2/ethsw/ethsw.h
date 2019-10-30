@@ -17,6 +17,7 @@
 #include <uapi/linux/if_bridge.h>
 #include <net/switchdev.h>
 #include <linux/if_bridge.h>
+#include <linux/fsl/mc.h>
 
 #include "dpsw.h"
 
@@ -39,6 +40,13 @@
 
 /* Number of receive queues (one RX and one TX_CONF) */
 #define ETHSW_RX_NUM_FQS		2
+
+/* Hardware requires alignment for ingress/egress buffer addresses */
+#define DPAA2_ETHSW_RX_BUF_RAW_SIZE	PAGE_SIZE
+#define DPAA2_ETHSW_RX_BUF_TAILROOM \
+	SKB_DATA_ALIGN(sizeof(struct skb_shared_info))
+#define DPAA2_ETHSW_RX_BUF_SIZE \
+	(DPAA2_ETHSW_RX_BUF_RAW_SIZE- DPAA2_ETHSW_RX_BUF_TAILROOM)
 
 extern const struct ethtool_ops ethsw_port_ethtool_ops;
 
@@ -77,6 +85,9 @@ struct ethsw_core {
 	bool				learning;
 
 	struct ethsw_fq			fq[ETHSW_RX_NUM_FQS];
+	struct fsl_mc_device		*dpbp_dev;
+	int 				buf_count;
+	u16				bpid;
 };
 
 static inline bool ethsw_has_ctrl_if(struct ethsw_core *ethsw)
