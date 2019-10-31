@@ -1572,6 +1572,8 @@ static struct sk_buff *ethsw_build_linear_skb(struct ethsw_core *ethsw,
 	skb_reserve(skb, fd_offset);
 	skb_put(skb, fd_length);
 
+	ethsw->buf_count--;
+
 	return skb;
 }
 
@@ -1744,6 +1746,31 @@ err_alloc:
 		goto release_bufs;
 
 	return 0;
+}
+
+static int ethsw_refill_bp(struct ethsw_core *ethsw)
+{
+	int *count = &ethsw->buf_count;
+	int new_count;
+	int err = 0;
+
+	if (unlikely(*count < DPAA2_ETHSW_REFILL_THRESH)) {
+		do {
+			new_count = ethsw_add_bufs(ethsw, ethsw->bpid);
+			if (unlikely(!new_count)) {
+				/* Out of memory; abort for now, we'll
+				 * try later on
+				 */
+				break;
+			}
+			*count += new_count;
+		} while (*count < DPAA2_ETHSW_BUFS_PERCPU);
+
+		if (unlikely(*count < DPAA2_ETHSW_BUFS_PERCPU))
+			err = -ENOMEM;
+	}
+
+	return err;
 }
 
 static int ethsw_seed_bp(struct ethsw_core *ethsw)
@@ -1955,8 +1982,7 @@ static int ethsw_poll(struct napi_struct *napi, int budget)
 			break;
 
 		/* Refill pool if appropriate */
-		// refill_pool
-		//
+		ethsw_refill_bp(fq->ethsw);
 
 		store_cleaned = ethsw_store_consume(fq);
 		cleaned += store_cleaned;

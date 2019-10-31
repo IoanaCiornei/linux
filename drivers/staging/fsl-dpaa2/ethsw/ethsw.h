@@ -56,7 +56,8 @@
 
 /* Buffer management */
 #define BUFS_PER_CMD			7
-#define DPAA2_ETHSW_BUFS_PERCPU		(20 * BUFS_PER_CMD)
+#define DPAA2_ETHSW_BUFS_PERCPU		(1024 * BUFS_PER_CMD)
+#define DPAA2_ETHSW_REFILL_THRESH	(DPAA2_ETHSW_BUFS_PERCPU * 5 / 6)
 
 /* ACL related configuration points */
 #define DPAA2_ETHSW_PORT_MAX_ACL_ENTRIES	16
