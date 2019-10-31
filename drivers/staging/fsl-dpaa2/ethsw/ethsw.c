@@ -2100,10 +2100,18 @@ static int ethsw_ctrl_if_setup(struct ethsw_core *ethsw)
 	if (err)
 		goto err_destroy_rings;
 
+	err = dpsw_ctrl_if_enable(ethsw->mc_io, 0, ethsw->dpsw_handle);
+	if (err) {
+		dev_err(ethsw->dev, "dpsw_ctrl_if_enable err %d\n", err);
+		goto err_deregister_dpio;
+	}
+
 	ethsw->napi_users = 0;
 
 	return 0;
 
+err_deregister_dpio:
+	ethsw_free_dpio(ethsw);
 err_destroy_rings:
 	ethsw_destroy_rings(ethsw);
 err_drain_dpbp:
@@ -2402,6 +2410,7 @@ static void ethsw_takedown(struct fsl_mc_device *sw_dev)
 
 static void ethsw_ctrl_if_teardown(struct ethsw_core *ethsw)
 {
+	dpsw_ctrl_if_disable(ethsw->mc_io, 0, ethsw->dpsw_handle);
 	ethsw_free_dpio(ethsw);
 	ethsw_destroy_rings(ethsw);
 	ethsw_drain_bp(ethsw);
