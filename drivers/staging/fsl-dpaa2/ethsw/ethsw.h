@@ -54,9 +54,21 @@
 /* Dequeue store size */
 #define DPAA2_ETHSW_STORE_SIZE		16
 
+/* Buffer management */
+#define BUFS_PER_CMD			7
+#define DPAA2_ETHSW_BUFS_PERCPU		(20 * BUFS_PER_CMD)
+
 /* ACL related configuration points */
 #define DPAA2_ETHSW_PORT_MAX_ACL_ENTRIES	16
 #define DPAA2_ETHSW_PORT_ACL_KEY_SIZE		sizeof(struct dpsw_prep_acl_entry)
+
+/* Number of times to retry DPIO portal operations while waiting
+ * for portal to finish executing current command and become
+ * available. We want to avoid being stuck in a while loop in case
+ * hardware becomes unresponsive, but not give up too easily if
+ * the portal really is busy for valid reasons
+ */
+#define DPAA2_ETHSW_SWP_BUSY_RETRIES	1000
 
 extern const struct ethtool_ops ethsw_port_ethtool_ops;
 
@@ -94,6 +106,7 @@ struct ethsw_core {
 	struct dpsw_attr		sw_attr;
 	int				dev_id;
 	struct ethsw_port_priv		**ports;
+	struct iommu_domain		*iommu_domain;
 
 	u8				vlans[VLAN_VID_MASK + 1];
 	bool				learning;
