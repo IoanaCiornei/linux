@@ -478,9 +478,51 @@ static int port_carrier_state_sync(struct net_device *netdev)
 	return 0;
 }
 
+/* Manage all NAPI intances for the control interface.
+ *
+ * We only have one RX queue and one Tx Conf queue for all
+ * switch ports. Therefore, we only need to enable the NAPI instance once, the
+ * first time one of the switch ports run .dev_open().
+ */
+
+static void ethsw_enable_ctrl_if_napi(struct ethsw_core *ethsw)
+{
+	int i;
+
+	/* a new interface is using the NAPI instance */
+	ethsw->napi_users++;
+
+	/* if there is already an user of the instance, return */
+	if (ethsw->napi_users > 1)
+		return;
+
+	if (!ethsw_has_ctrl_if(ethsw))
+		return;
+
+	for (i = 0; i < ETHSW_RX_NUM_FQS; i++)
+		napi_enable(&ethsw->fq[i].napi);
+}
+
+static void ethsw_disable_ctrl_if_napi(struct ethsw_core *ethsw)
+{
+	int i;
+
+	/* If we are not the last interface using the NAPI, return */
+	ethsw->napi_users--;
+	if (ethsw->napi_users)
+		return;
+
+	if (!ethsw_has_ctrl_if(ethsw))
+		return;
+
+	for (i = 0; i < ETHSW_RX_NUM_FQS; i++)
+		napi_disable(&ethsw->fq[i].napi);
+}
+
 static int port_open(struct net_device *netdev)
 {
 	struct ethsw_port_priv *port_priv = netdev_priv(netdev);
+	struct ethsw_core *ethsw = port_priv->ethsw_data;
 	int err;
 
 	/* No need to allow Tx as control interface is disabled */
@@ -502,6 +544,8 @@ static int port_open(struct net_device *netdev)
 		goto err_carrier_sync;
 	}
 
+	ethsw_enable_ctrl_if_napi(ethsw);
+
 	return 0;
 
 err_carrier_sync:
@@ -514,6 +558,7 @@ err_carrier_sync:
 static int port_stop(struct net_device *netdev)
 {
 	struct ethsw_port_priv *port_priv = netdev_priv(netdev);
+	struct ethsw_core *ethsw = port_priv->ethsw_data;
 	int err;
 
 	err = dpsw_if_disable(port_priv->ethsw_data->mc_io, 0,
@@ -523,6 +568,8 @@ static int port_stop(struct net_device *netdev)
 		netdev_err(netdev, "dpsw_if_disable err %d\n", err);
 		return err;
 	}
+
+	ethsw_disable_ctrl_if_napi(ethsw);
 
 	return 0;
 }
@@ -1368,6 +1415,118 @@ err_switchdev_nb:
 	return err;
 }
 
+static void ethsw_free_fd(const struct ethsw_core *ethsw,
+			  const struct dpaa2_fd *fd)
+{
+	struct device *dev = ethsw->dev;
+	unsigned char *buffer_start;
+	dma_addr_t fd_addr;
+	struct sk_buff **skbh, *skb;
+
+	fd_addr = dpaa2_fd_get_addr(fd);
+	skbh = dpaa2_iova_to_virt(ethsw->iommu_domain, fd_addr);
+
+	skb = *skbh;
+	buffer_start = (unsigned char *)skbh;
+
+	dma_unmap_single(dev, fd_addr,
+			 skb_tail_pointer(skb) - buffer_start,
+			 DMA_TO_DEVICE);
+
+	/* Move on with skb release */
+	dev_kfree_skb(skb);
+}
+
+/* Build a linear skb based on a single-buffer frame descriptor */
+static struct sk_buff *ethsw_build_linear_skb(struct ethsw_core *ethsw,
+					      const struct dpaa2_fd *fd)
+{
+	u16 fd_offset = dpaa2_fd_get_offset(fd);
+	u32 fd_length = dpaa2_fd_get_len(fd);
+	struct device *dev = ethsw->dev;
+	struct sk_buff *skb = NULL;
+	dma_addr_t addr;
+	void *fd_vaddr;
+
+	addr = dpaa2_fd_get_addr(fd);
+	dma_unmap_single(dev, addr, DPAA2_ETHSW_RX_BUF_SIZE,
+			 DMA_FROM_DEVICE);
+	fd_vaddr = dpaa2_iova_to_virt(ethsw->iommu_domain, addr);
+	prefetch(fd_vaddr + fd_offset);
+
+	skb = build_skb(fd_vaddr, DPAA2_ETHSW_RX_BUF_SIZE +
+			SKB_DATA_ALIGN(sizeof(struct skb_shared_info)));
+	if (unlikely(!skb)) {
+		dev_err(dev, "build_skb() failed\n");
+		return NULL;
+	}
+
+	skb_reserve(skb, fd_offset);
+	skb_put(skb, fd_length);
+
+	return skb;
+}
+
+static void ethsw_tx_conf(struct ethsw_fq *fq,
+			  const struct dpaa2_fd *fd)
+{
+	ethsw_free_fd(fq->ethsw, fd);
+}
+
+static void ethsw_rx(struct ethsw_fq *fq,
+		     const struct dpaa2_fd *fd)
+{
+	struct ethsw_core *ethsw = fq->ethsw;
+	struct ethsw_port_priv *port_priv;
+	struct net_device *netdev;
+	struct sk_buff *skb;
+	int if_id = -1;
+	u16 vlan_tci;
+	int err;
+
+	/* prefetch the frame descriptor */
+	prefetch(fd);
+
+	/* get switch ingress interface ID */
+	if_id = upper_32_bits(dpaa2_fd_get_flc(fd)) & 0x0000FFFF;
+
+	if (if_id < 0 || if_id >= ethsw->sw_attr.num_ifs) {
+		dev_err(ethsw->dev, "Frame received from unknown interface!\n");
+		goto err_free_fd;
+	}
+	port_priv = ethsw->ports[if_id];
+	netdev = port_priv->netdev;
+
+	/* build the SKB based on the FD received */
+	if (dpaa2_fd_get_format(fd) == dpaa2_fd_single) {
+		skb = ethsw_build_linear_skb(ethsw, fd);
+	} else {
+		netdev_err(netdev, "Received invalid frame format\n");
+		goto err_free_fd;
+	}
+
+	if (unlikely(!skb))
+		goto err_free_fd;
+
+	skb_reset_mac_header(skb);
+
+	/* Remove VLAN 1 for received frame */
+	// TODO: we should remove the PVID, I think
+	err = __skb_vlan_pop(skb, &vlan_tci);
+	if (unlikely(err))
+		dev_info(ethsw->dev, "skb_vlan_pop() failed %d", err);
+
+	skb->dev = netdev;
+	skb->protocol = eth_type_trans(skb, skb->dev);
+
+	netif_receive_skb(skb);
+
+	return;
+
+err_free_fd:
+	ethsw_free_fd(ethsw, fd);
+}
+
 static int ethsw_setup_fqs(struct ethsw_core *ethsw)
 {
 	struct dpsw_ctrl_if_attr ctrl_if_attr;
@@ -1385,11 +1544,13 @@ static int ethsw_setup_fqs(struct ethsw_core *ethsw)
 
 	ethsw->fq[i].fqid = ctrl_if_attr.rx_fqid;
 	ethsw->fq[i].ethsw = ethsw;
-	ethsw->fq[i++].type = DPSW_QUEUE_RX;
+	ethsw->fq[i].type = DPSW_QUEUE_RX;
+	ethsw->fq[i++].consume = ethsw_rx;
 
 	ethsw->fq[i].fqid = ctrl_if_attr.tx_err_conf_fqid;
 	ethsw->fq[i].ethsw = ethsw;
-	ethsw->fq[i++].type = DPSW_QUEUE_TX_ERR_CONF;
+	ethsw->fq[i].type = DPSW_QUEUE_TX_ERR_CONF;
+	ethsw->fq[i++].consume = ethsw_tx_conf;
 
 	return 0;
 }
@@ -1622,6 +1783,107 @@ static void ethsw_destroy_rings(struct ethsw_core *ethsw)
 		dpaa2_io_store_destroy(ethsw->fq[i].store);
 }
 
+static int ethsw_pull_fq(struct ethsw_fq *fq)
+{
+	int err, retries = 0;
+
+	/* Try to pull from the FQ while the portal is busy and we didn't hit
+	 * the maximum number fo retries
+	 */
+	do {
+		err = dpaa2_io_service_pull_fq(NULL,
+					       fq->fqid,
+					       fq->store);
+		cpu_relax();
+	} while (err == -EBUSY && retries++ < DPAA2_ETHSW_SWP_BUSY_RETRIES);
+
+	if (unlikely(err))
+		dev_err(fq->ethsw->dev, "dpaa2_io_service_pull err %d", err);
+
+	return err;
+}
+
+/* Consume all frames pull-dequeued into the store */
+static int ethsw_store_consume(struct ethsw_fq *fq)
+{
+	struct ethsw_core *ethsw = fq->ethsw;
+	int cleaned = 0, is_last;
+	struct dpaa2_dq *dq;
+	int retries = 0;
+
+	do {
+		/* Get the next available FD from the store */
+		dq = dpaa2_io_store_next(fq->store, &is_last);
+		if (unlikely(!dq)) {
+			if (retries++ >= DPAA2_ETHSW_SWP_BUSY_RETRIES) {
+				dev_err_once(ethsw->dev,
+					     "No valid dequeue response\n");
+				return -ETIMEDOUT;
+			}
+			continue;
+		}
+
+		/* Process the FD */
+		fq->consume(fq, dpaa2_dq_fd(dq));
+		cleaned++;
+
+	} while (!is_last);
+
+	return cleaned;
+}
+
+/* NAPI poll routine */
+static int ethsw_poll(struct napi_struct *napi, int budget)
+{
+	int err, cleaned = 0, store_cleaned, work_done;
+	struct ethsw_fq *fq;
+	int retries = 0;
+
+	fq = container_of(napi, struct ethsw_fq, napi);
+
+	do {
+		err = ethsw_pull_fq(fq);
+		if (unlikely(err))
+			break;
+
+		/* Refill pool if appropriate */
+		// refill_pool
+		//
+
+		store_cleaned = ethsw_store_consume(fq);
+		cleaned += store_cleaned;
+
+		if (cleaned >= budget) {
+			work_done = budget;
+			goto out;
+		}
+
+	} while (store_cleaned);
+
+	/* We didn't consume entire budget, so finish napi and
+	 * re-enable data availability notifications
+	 */
+	napi_complete_done(napi, cleaned);
+	do {
+		err = dpaa2_io_service_rearm(NULL, &fq->nctx);
+		cpu_relax();
+	} while (err == -EBUSY && retries++ < DPAA2_ETHSW_SWP_BUSY_RETRIES);
+
+	work_done = max(cleaned, 1);
+out:
+
+	return work_done;
+}
+
+static void ethsw_fqdan_cb(struct dpaa2_io_notification_ctx *nctx)
+{
+	struct ethsw_fq *fq;
+
+	fq = container_of(nctx, struct ethsw_fq, nctx);
+
+	napi_schedule_irqoff(&fq->napi);
+}
+
 static int ethsw_setup_dpio(struct ethsw_core *ethsw)
 {
 	struct dpaa2_io_notification_ctx *nctx;
@@ -1634,6 +1896,7 @@ static int ethsw_setup_dpio(struct ethsw_core *ethsw)
 		nctx->is_cdan = 0;
 		nctx->id = ethsw->fq[i].fqid;
 		nctx->desired_cpu = DPAA2_IO_ANY_CPU;
+		nctx->cb = ethsw_fqdan_cb;
 
 		err = dpaa2_io_service_register(NULL, nctx, ethsw->dev);
 		if (err) {
@@ -1702,6 +1965,8 @@ static int ethsw_ctrl_if_setup(struct ethsw_core *ethsw)
 	err = ethsw_setup_dpio(ethsw);
 	if (err)
 		goto err_destroy_rings;
+
+	ethsw->napi_users = 0;
 
 	return 0;
 
@@ -1856,7 +2121,6 @@ static int ethsw_acl_mac_to_ctr_if(struct ethsw_port_priv *port_priv,
 	memset(&acl_entry_cfg, 0, sizeof(acl_entry_cfg));
 	acl_entry_cfg.precedence = port_priv->acl_cnt;
 	acl_entry_cfg.result.action = DPSW_ACL_ACTION_REDIRECT_TO_CTRL_IF;
-
 	acl_entry_cfg.key_iova = dma_map_single(dev, cmd_buff,
 						DPAA2_ETHSW_PORT_ACL_KEY_SIZE,
 						DMA_TO_DEVICE);
@@ -2151,6 +2415,14 @@ static int ethsw_probe(struct fsl_mc_device *sw_dev)
 		err = ethsw_probe_port(ethsw, i);
 		if (err)
 			goto err_free_ports;
+	}
+
+	if (ethsw_has_ctrl_if(ethsw)) {
+		netif_napi_add(ethsw->ports[0]->netdev, &ethsw->fq[0].napi, ethsw_poll,
+			       NAPI_POLL_WEIGHT);
+		netif_napi_add(ethsw->ports[0]->netdev, &ethsw->fq[1].napi, ethsw_poll,
+			       NAPI_POLL_WEIGHT);
+
 	}
 
 	err = dpsw_enable(ethsw->mc_io, 0, ethsw->dpsw_handle);

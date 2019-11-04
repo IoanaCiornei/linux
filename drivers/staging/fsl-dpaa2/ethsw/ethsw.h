@@ -75,10 +75,12 @@ extern const struct ethtool_ops ethsw_port_ethtool_ops;
 struct ethsw_core;
 
 struct ethsw_fq {
+	void (*consume)(struct ethsw_fq *fq, const struct dpaa2_fd *fd);
 	struct ethsw_core *ethsw;
 	enum dpsw_queue_type type;
 	struct dpaa2_io_notification_ctx nctx;
 	struct dpaa2_io_store *store;
+	struct napi_struct napi;
 	u32 fqid;
 };
 
@@ -115,6 +117,7 @@ struct ethsw_core {
 	struct fsl_mc_device		*dpbp_dev;
 	int 				buf_count;
 	u16				bpid;
+	int				napi_users;
 };
 
 static inline bool ethsw_has_ctrl_if(struct ethsw_core *ethsw)
