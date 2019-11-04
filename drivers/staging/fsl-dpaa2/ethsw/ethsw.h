@@ -115,6 +115,14 @@ struct ethsw_port_priv {
 	u16			tx_qdid;
 };
 
+
+#define DPAA2_ETHSW_CTRL_IF_MIN_MAJOR 8
+#define DPAA2_ETHSW_CTRL_IF_MIN_MINOR 4
+
+enum dpaa2_ethsw_features {
+	DPAA2_ETHSW_CONTROL_TRAFFIC = BIT(0),
+};
+
 /* Switch data */
 struct ethsw_core {
 	struct device			*dev;
@@ -124,6 +132,7 @@ struct ethsw_core {
 	int				dev_id;
 	struct ethsw_port_priv		**ports;
 	struct iommu_domain		*iommu_domain;
+	int				features;
 
 	u8				vlans[VLAN_VID_MASK + 1];
 	bool				learning;
@@ -137,6 +146,9 @@ struct ethsw_core {
 
 static inline bool ethsw_has_ctrl_if(struct ethsw_core *ethsw)
 {
+	if (!ethsw->features & DPAA2_ETHSW_CONTROL_TRAFFIC)
+		return false;
+
 	return !(ethsw->sw_attr.options & DPSW_OPT_CTRL_IF_DIS);
 }
 #endif	/* __ETHSW_H */

@@ -2122,6 +2122,14 @@ err_free_dpbp:
 	return err;
 }
 
+void dpaa2_ethsw_set_features(struct ethsw_core *ethsw,
+			      u16 major, u16 minor)
+{
+	if (major >= DPAA2_ETHSW_CTRL_IF_MIN_MAJOR &&
+	    minor >= DPAA2_ETHSW_CTRL_IF_MIN_MINOR)
+		ethsw->features |= DPAA2_ETHSW_CONTROL_TRAFFIC;
+}
+
 static int ethsw_init(struct fsl_mc_device *sw_dev)
 {
 	struct device *dev = &sw_dev->dev;
@@ -2164,6 +2172,11 @@ static int ethsw_init(struct fsl_mc_device *sw_dev)
 		err = -ENOTSUPP;
 		goto err_close;
 	}
+
+	/* Compose the set of supported features by
+	 * the current firmware image
+	 */
+	dpaa2_ethsw_set_features(ethsw, version_major, version_minor);
 
 	err = dpsw_reset(ethsw->mc_io, 0, ethsw->dpsw_handle);
 	if (err) {
