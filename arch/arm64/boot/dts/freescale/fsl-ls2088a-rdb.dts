@@ -21,6 +21,23 @@
 	chosen {
 		stdout-path = "serial1:115200n8";
 	};
+
+	sfp_mac1: sfp-mac1 {
+		compatible = "sff,sfp";
+		i2c-bus = <&sfp_bus_0>;
+	};
+	sfp_mac2: sfp-mac2 {
+		compatible = "sff,sfp";
+		i2c-bus = <&sfp_bus_1>;
+	};
+	sfp_mac3: sfp-mac3 {
+		compatible = "sff,sfp";
+		i2c-bus = <&sfp_bus_2>;
+	};
+	sfp_mac4: sfp-mac4 {
+		compatible = "sff,sfp";
+		i2c-bus = <&sfp_bus_3>;
+	};
 };
 
 &dpmac1 {
