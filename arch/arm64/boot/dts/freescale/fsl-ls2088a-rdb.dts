@@ -79,21 +79,25 @@
 		compatible = "ethernet-phy-id13e5.1002";
 		reg = <0x10>;
 		phy-connection-type = "10gbase-kr";
+		sfp = <&sfp_mac1>;
 	};
 	mdio1_phy2: emdio1_phy@2 {
 		compatible = "ethernet-phy-id13e5.1002";
 		reg = <0x11>;
 		phy-connection-type = "10gbase-kr";
+		sfp = <&sfp_mac2>;
 	};
 	mdio1_phy3: emdio1_phy@3 {
 		compatible = "ethernet-phy-id13e5.1002";
 		reg = <0x12>;
 		phy-connection-type = "10gbase-kr";
+		sfp = <&sfp_mac3>;
 	};
 	mdio1_phy4: emdio1_phy@4 {
 		compatible = "ethernet-phy-id13e5.1002";
 		reg = <0x13>;
 		phy-connection-type = "10gbase-kr";
+		sfp = <&sfp_mac4>;
 	};
 };
 
