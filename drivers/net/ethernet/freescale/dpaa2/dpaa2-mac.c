@@ -74,6 +74,7 @@ static bool dpaa2_mac_phy_mode_mismatch(struct dpaa2_mac *mac,
 	case PHY_INTERFACE_MODE_RGMII_ID:
 	case PHY_INTERFACE_MODE_RGMII_RXID:
 	case PHY_INTERFACE_MODE_RGMII_TXID:
+	case PHY_INTERFACE_MODE_10GKR:
 		return (interface != mac->if_mode);
 	default:
 		return true;
@@ -97,8 +98,10 @@ static void dpaa2_mac_validate(struct phylink_config *config,
 	phylink_set(mask, Pause);
 	phylink_set(mask, Asym_Pause);
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	switch (state->interface) {
 	case PHY_INTERFACE_MODE_10GKR:
+		printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 		phylink_set(mask, 10baseT_Full);
 		phylink_set(mask, 100baseT_Full);
 		phylink_set(mask, 1000baseT_Full);
@@ -108,6 +111,7 @@ static void dpaa2_mac_validate(struct phylink_config *config,
 	case PHY_INTERFACE_MODE_RGMII_ID:
 	case PHY_INTERFACE_MODE_RGMII_RXID:
 	case PHY_INTERFACE_MODE_RGMII_TXID:
+		printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 		phylink_set(mask, 10baseT_Full);
 		phylink_set(mask, 100baseT_Full);
 		phylink_set(mask, 1000baseT_Full);
@@ -116,12 +120,15 @@ static void dpaa2_mac_validate(struct phylink_config *config,
 		goto empty_set;
 	}
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	linkmode_and(supported, supported, mask);
 	linkmode_and(state->advertising, state->advertising, mask);
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	return;
 
 empty_set:
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	linkmode_zero(supported);
 }
 
@@ -132,6 +139,7 @@ static void dpaa2_mac_config(struct phylink_config *config, unsigned int mode,
 	struct dpmac_link_state *dpmac_state = &mac->state;
 	int err;
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	if (state->speed != SPEED_UNKNOWN)
 		dpmac_state->rate = state->speed;
 
@@ -170,6 +178,7 @@ static void dpaa2_mac_link_up(struct phylink_config *config, unsigned int mode,
 	struct dpmac_link_state *dpmac_state = &mac->state;
 	int err;
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	dpmac_state->up = 1;
 	err = dpmac_set_link_state(mac->mc_io, 0,
 				   mac->mc_dev->mc_handle, dpmac_state);
@@ -185,6 +194,7 @@ static void dpaa2_mac_link_down(struct phylink_config *config,
 	struct dpmac_link_state *dpmac_state = &mac->state;
 	int err;
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	dpmac_state->up = 0;
 	err = dpmac_set_link_state(mac->mc_io, 0,
 				   mac->mc_dev->mc_handle, dpmac_state);
@@ -286,12 +296,14 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
 	}
 	mac->phylink = phylink;
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	err = phylink_of_phy_connect(mac->phylink, dpmac_node, 0);
 	if (err) {
 		netdev_err(net_dev, "phylink_of_phy_connect() = %d\n", err);
 		goto err_phylink_destroy;
 	}
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	of_node_put(dpmac_node);
 
 	return 0;
@@ -310,6 +322,7 @@ void dpaa2_mac_disconnect(struct dpaa2_mac *mac)
 	if (!mac->phylink)
 		return;
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	phylink_disconnect_phy(mac->phylink);
 	phylink_destroy(mac->phylink);
 	dpmac_close(mac->mc_io, 0, mac->mc_dev->mc_handle);

@@ -237,6 +237,7 @@ static int pca954x_select_chan(struct i2c_mux_core *muxc, u32 chan)
 	u8 regval;
 	int ret = 0;
 
+
 	/* we make switches look like muxes, not sure how to be smarter */
 	if (chip->muxtype == pca954x_ismux)
 		regval = chan | chip->enable;
@@ -248,6 +249,7 @@ static int pca954x_select_chan(struct i2c_mux_core *muxc, u32 chan)
 		ret = pca954x_reg_write(muxc->parent, client, regval);
 		data->last_chan = ret < 0 ? 0 : regval;
 	}
+	printk(KERN_ERR "%s %d: chan = %d | ret = %d\n", __func__, __LINE__, chan, ret);
 
 	return ret;
 }
@@ -258,6 +260,7 @@ static int pca954x_deselect_mux(struct i2c_mux_core *muxc, u32 chan)
 	struct i2c_client *client = data->client;
 	s8 idle_state;
 
+	printk(KERN_ERR "%s %d: chan = %d\n", __func__, __LINE__, chan);
 	idle_state = READ_ONCE(data->idle_state);
 	if (idle_state >= 0)
 		/* Set the mux back to a predetermined channel */

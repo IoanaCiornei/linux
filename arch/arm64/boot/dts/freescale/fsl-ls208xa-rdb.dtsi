@@ -92,29 +92,30 @@
 	status = "okay";
 	pca9547@77 {
 		compatible = "nxp,pca9547";
-		reg = <0x77>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		idle-state = <0>;
+		reg = <0x77>;
 		sfp_bus_0: i2c@0 {
 			#address-cells = <1>;
 			#size-cells = <0>;
-			reg = <0x0>;
+			reg = <0>;
 		};
-		sfp_bus_1: i2c@1 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <0x1>;
-		};
-		sfp_bus_2: i2c@2 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <0x2>;
-		};
-		sfp_bus_3: i2c@3 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <0x3>;
-		};
+		/*sfp_bus_1: i2c@1 {*/
+			/*#address-cells = <1>;*/
+			/*#size-cells = <0>;*/
+			/*reg = <1>;*/
+		/*};*/
+		/*sfp_bus_2: i2c@2 {*/
+			/*#address-cells = <1>;*/
+			/*#size-cells = <0>;*/
+			/*reg = <2>;*/
+		/*};*/
+		/*sfp_bus_3: i2c@3 {*/
+			/*#address-cells = <1>;*/
+			/*#size-cells = <0>;*/
+			/*reg = <3>;*/
+		/*};*/
 	};
 };
 

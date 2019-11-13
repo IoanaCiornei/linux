@@ -2039,6 +2039,7 @@ int i2c_transfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 	 *    (discarding status on the first one).
 	 */
 	ret = __i2c_lock_bus_helper(adap);
+	printk(KERN_ERR "%s %d: ret = %d\n", __func__, __LINE__, ret);
 	if (ret)
 		return ret;
 

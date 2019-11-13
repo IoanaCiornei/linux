@@ -323,6 +323,7 @@ static int sfp_i2c_read(struct sfp *sfp, bool a2, u8 dev_addr, void *buf,
 		msgs[1].len = this_len;
 
 		ret = i2c_transfer(sfp->i2c, msgs, ARRAY_SIZE(msgs));
+		printk(KERN_ERR "%s %d: i2c_adapter = %s | ret = %d\n", __func__, __LINE__, sfp->i2c->name, ret);
 		if (ret < 0)
 			return ret;
 
