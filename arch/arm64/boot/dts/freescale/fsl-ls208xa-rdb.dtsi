@@ -49,6 +49,7 @@
 		reg = <0x75>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-never-disable;
 		i2c@1 {
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -96,6 +97,7 @@
 		#size-cells = <0>;
 		idle-state = <0>;
 		reg = <0x77>;
+		i2c-mux-never-disable;
 		sfp_bus_0: i2c@0 {
 			#address-cells = <1>;
 			#size-cells = <0>;
