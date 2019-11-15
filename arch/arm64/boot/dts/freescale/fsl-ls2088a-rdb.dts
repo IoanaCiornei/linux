@@ -25,7 +25,6 @@
 	sfp_mac1: sfp-mac1 {
 		compatible = "sff,sfp";
 		i2c-bus = <&sfp_bus_0>;
-		maximum-power-milliwatt = <2000>;
 	};
 	/*sfp_mac2: sfp-mac2 {*/
 		/*compatible = "sff,sfp";*/
@@ -43,6 +42,8 @@
 
 &dpmac1 {
 	phy-handle = <&mdio1_phy1>;
+	/*phy-connection-type = "10gbase-kr";*/
+	sfp = <&sfp_mac1>;
 };
 
 &dpmac2 {
@@ -79,8 +80,6 @@
 	mdio1_phy1: emdio1_phy@1 {
 		compatible = "ethernet-phy-id13e5.1002";
 		reg = <0x10>;
-		phy-connection-type = "10gbase-kr";
-		sfp = <&sfp_mac1>;
 	};
 	mdio1_phy2: emdio1_phy@2 {
 		compatible = "ethernet-phy-id13e5.1002";

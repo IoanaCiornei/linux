@@ -1942,6 +1942,9 @@ static int sfp_module_eeprom(struct sfp *sfp, struct ethtool_eeprom *ee,
 	if (ee->len == 0)
 		return -EINVAL;
 
+
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
+
 	first = ee->offset;
 	last = ee->offset + ee->len;
 	if (first < ETH_MODULE_SFF_8079_LEN) {
@@ -1964,6 +1967,7 @@ static int sfp_module_eeprom(struct sfp *sfp, struct ethtool_eeprom *ee,
 		if (ret < 0)
 			return ret;
 	}
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	return 0;
 }
 

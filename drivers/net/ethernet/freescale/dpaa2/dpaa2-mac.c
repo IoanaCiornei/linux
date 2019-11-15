@@ -98,7 +98,24 @@ static void dpaa2_mac_validate(struct phylink_config *config,
 	phylink_set(mask, Pause);
 	phylink_set(mask, Asym_Pause);
 
-	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
+	if (state->interface == PHY_INTERFACE_MODE_NA) {
+		phylink_set(mask, 10baseT_Full);
+		phylink_set(mask, 100baseT_Full);
+		phylink_set(mask, 1000baseT_Full);
+		phylink_set(mask, 10000baseT_Full);
+		phylink_set(mask, 10000baseSR_Full);
+
+		linkmode_and(supported, supported, mask);
+		linkmode_and(state->advertising, state->advertising, mask);
+
+
+		printk(KERN_ERR "++++++ %s %d:  support %*pb  \n", __func__, __LINE__, __ETHTOOL_LINK_MODE_MASK_NBITS, supported);
+
+		return;
+	}
+
+
+	printk(KERN_ERR "===== %s %d: interface = %d\n", __func__, __LINE__, state->interface);
 	switch (state->interface) {
 	case PHY_INTERFACE_MODE_10GKR:
 		printk(KERN_ERR "%s %d\n", __func__, __LINE__);
@@ -106,6 +123,7 @@ static void dpaa2_mac_validate(struct phylink_config *config,
 		phylink_set(mask, 100baseT_Full);
 		phylink_set(mask, 1000baseT_Full);
 		phylink_set(mask, 10000baseT_Full);
+		phylink_set(mask, 10000baseSR_Full);
 		break;
 	case PHY_INTERFACE_MODE_RGMII:
 	case PHY_INTERFACE_MODE_RGMII_ID:
@@ -124,7 +142,7 @@ static void dpaa2_mac_validate(struct phylink_config *config,
 	linkmode_and(supported, supported, mask);
 	linkmode_and(state->advertising, state->advertising, mask);
 
-	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
+	printk(KERN_ERR "++++++ %s %d:  support %*pb  \n", __func__, __LINE__, __ETHTOOL_LINK_MODE_MASK_NBITS, supported);
 	return;
 
 empty_set:
@@ -202,11 +220,24 @@ static void dpaa2_mac_link_down(struct phylink_config *config,
 		netdev_err(mac->net_dev, "dpmac_set_link_state() = %d\n", err);
 }
 
+static void dpaa2_mac_an_restart(struct phylink_config *config)
+{
+
+}
+
+static int dpaa2_mac_link_state(struct phylink_config *config,
+				struct phylink_link_state *state)
+{
+	return 0;
+}
+
 static const struct phylink_mac_ops dpaa2_mac_phylink_ops = {
 	.validate = dpaa2_mac_validate,
 	.mac_config = dpaa2_mac_config,
 	.mac_link_up = dpaa2_mac_link_up,
 	.mac_link_down = dpaa2_mac_link_down,
+	.mac_an_restart = dpaa2_mac_an_restart,
+	.mac_link_state = dpaa2_mac_link_state,
 };
 
 bool dpaa2_mac_is_type_fixed(struct fsl_mc_device *dpmac_dev,

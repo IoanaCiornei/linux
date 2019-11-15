@@ -3426,12 +3426,13 @@ static irqreturn_t dpni_irq0_handler_thread(int irq_num, void *arg)
 		set_mac_addr(netdev_priv(net_dev));
 		update_tx_fqids(priv);
 
-		rtnl_lock();
+		// TODO: this will race with sfp_bus_add_upstream+0x28/0x90
+		/*rtnl_lock();*/
 		if (priv->mac)
 			dpaa2_eth_disconnect_mac(priv);
 		else
 			dpaa2_eth_connect_mac(priv);
-		rtnl_unlock();
+		/*rtnl_unlock();*/
 	}
 
 	return IRQ_HANDLED;

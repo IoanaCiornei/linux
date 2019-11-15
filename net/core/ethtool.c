@@ -2233,15 +2233,19 @@ static int __ethtool_get_module_eeprom(struct net_device *dev,
 	const struct ethtool_ops *ops = dev->ethtool_ops;
 	struct phy_device *phydev = dev->phydev;
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	if (dev->sfp_bus)
 		return sfp_get_module_eeprom(dev->sfp_bus, ee, data);
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	if (phydev && phydev->drv && phydev->drv->module_eeprom)
 		return phydev->drv->module_eeprom(phydev, ee, data);
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	if (ops->get_module_eeprom)
 		return ops->get_module_eeprom(dev, ee, data);
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	return -EOPNOTSUPP;
 }
 

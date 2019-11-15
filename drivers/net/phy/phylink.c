@@ -150,8 +150,10 @@ static const char *phylink_an_mode_str(unsigned int mode)
 static int phylink_validate(struct phylink *pl, unsigned long *supported,
 			    struct phylink_link_state *state)
 {
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	pl->ops->validate(pl->config, supported, state);
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	return phylink_is_empty_linkmode(supported) ? -EINVAL : 0;
 }
 
@@ -1699,21 +1701,25 @@ static int phylink_sfp_module_insert(void *upstream,
 	config.pause = MLO_PAUSE_AN;
 	config.an_enabled = pl->link_config.an_enabled;
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	/* Ignore errors if we're expecting a PHY to attach later */
 	ret = phylink_validate(pl, support, &config);
 	if (ret) {
 		phylink_err(pl, "validation with support %*pb failed: %d\n",
 			    __ETHTOOL_LINK_MODE_MASK_NBITS, support, ret);
+		printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 		return ret;
 	}
 
 	linkmode_copy(support1, support);
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	iface = sfp_select_interface(pl->sfp_bus, id, config.advertising);
 	if (iface == PHY_INTERFACE_MODE_NA) {
 		phylink_err(pl,
 			    "selection of interface failed, advertisement %*pb\n",
 			    __ETHTOOL_LINK_MODE_MASK_NBITS, config.advertising);
+		printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 		return -EINVAL;
 	}
 
@@ -1727,7 +1733,7 @@ static int phylink_sfp_module_insert(void *upstream,
 		return ret;
 	}
 
-	phylink_dbg(pl, "requesting link mode %s/%s with support %*pb\n",
+	phylink_err(pl, "requesting link mode %s/%s with support %*pb\n",
 		    phylink_an_mode_str(MLO_AN_INBAND),
 		    phy_modes(config.interface),
 		    __ETHTOOL_LINK_MODE_MASK_NBITS, support);
@@ -1748,7 +1754,7 @@ static int phylink_sfp_module_insert(void *upstream,
 
 		changed = true;
 
-		phylink_info(pl, "switched to %s/%s link mode\n",
+		phylink_err(pl, "switched to %s/%s link mode\n",
 			     phylink_an_mode_str(MLO_AN_INBAND),
 			     phy_modes(config.interface));
 	}
