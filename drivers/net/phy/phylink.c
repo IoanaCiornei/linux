@@ -621,8 +621,25 @@ static void phylink_resolve(struct work_struct *w)
 		}
 	}
 
-	if (mac_config)
-		phylink_mac_config(pl, &link_state);
+	if (mac_config) {
+		if (link_state.interface == pl->cur_interface) {
+			/* The interface remains unchanged, only the speed,
+			 * duplex or pause settings have changed.
+			 */
+			phylink_mac_config(pl, &link_state);
+		} else if (cur_link_state) {
+			/* The interface has changed, but the link is up.
+			 * Force it down and retrigger resolution.
+			 */
+			link_state.link = false;
+			retrigger = true;
+		} else {
+			/* The interface has changed and the link is down.
+			 * Reconfigure the MAC and PCS.
+			 */
+			phylink_pcs_config(pl, false, &link_state);
+		}
+	}
 
 	if (link_state.link != cur_link_state) {
 		pl->old_link_state = link_state.link;
