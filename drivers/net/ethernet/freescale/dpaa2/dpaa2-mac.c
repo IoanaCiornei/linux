@@ -7,6 +7,119 @@
 #define phylink_to_dpaa2_mac(config) \
 	container_of((config), struct dpaa2_mac, phylink_config)
 
+#define MII_IFMODE		0x14
+#define IF_MODE_SGMII_ENA	BIT(0)
+#define IF_MODE_USE_SGMII_AN	BIT(1)
+#define IF_MODE_SGMII_SPEED_10	(0 << 2)
+#define IF_MODE_SGMII_SPEED_100	(1 << 2)
+#define IF_MODE_SGMII_SPEED_1G	(2 << 2)
+#define IF_MODE_SGMII_SPEED_MSK	(3 << 2)
+#define IF_MODE_SGMII_DUPLEX	BIT(4)		// set = half duplex
+
+static void dpaa2_mac_pcs_get_state(struct phylink_config *config,
+				    struct phylink_link_state *state)
+{
+	struct mdio_device *pcs = phylink_to_dpaa2_mac(config)->pcs;
+
+	switch (state->interface) {
+	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_1000BASEX:
+		phylink_mii_c22_pcs_get_state(pcs, state);
+		break;
+
+	default:
+		break;
+	}
+}
+
+static void dpaa2_mac_pcs_an_restart(struct phylink_config *config)
+{
+	struct mdio_device *pcs = phylink_to_dpaa2_mac(config)->pcs;
+
+	phylink_mii_c22_pcs_an_restart(pcs);
+}
+
+static int dpaa2_mac_pcs_config(struct phylink_config *config,
+				unsigned int mode, phy_interface_t interface,
+				const unsigned long *advertising)
+{
+	struct mdio_device *pcs = phylink_to_dpaa2_mac(config)->pcs;
+	u16 if_mode;
+	int bmcr, ret;
+
+	if (mode == MLO_AN_INBAND)
+		bmcr = BMCR_ANENABLE;
+	else
+		bmcr = 0;
+
+	switch (interface) {
+	case PHY_INTERFACE_MODE_SGMII:
+		if_mode = IF_MODE_SGMII_ENA;
+		if (mode == MLO_AN_INBAND)
+			if_mode |= IF_MODE_USE_SGMII_AN;
+		mdiobus_modify(pcs->bus, 0, MII_IFMODE,
+			       IF_MODE_SGMII_ENA | IF_MODE_USE_SGMII_AN,
+			       if_mode);
+		mdiobus_modify(pcs->bus, 0, MII_BMCR, BMCR_ANENABLE, bmcr);
+		ret = phylink_mii_c22_pcs_set_advertisement(pcs, interface,
+							    advertising);
+		break;
+
+	case PHY_INTERFACE_MODE_1000BASEX:
+		mdiobus_write(pcs->bus, 0, MII_IFMODE, 0);
+		mdiobus_modify(pcs->bus, 0, MII_BMCR, BMCR_ANENABLE, bmcr);
+		ret = phylink_mii_c22_pcs_set_advertisement(pcs, interface,
+							    advertising);
+		break;
+
+	default:
+		ret = 0;
+		break;
+	}
+
+	return ret;
+}
+
+static void dpaa2_mac_pcs_link_up(struct phylink_config *config,
+				  unsigned int mode, phy_interface_t interface,
+				  int speed, int duplex)
+{
+	struct mdio_device *pcs = phylink_to_dpaa2_mac(config)->pcs;
+	u16 if_mode;
+
+	/* The PCS PHY needs to be configured manually for the speed and
+	 * duplex when operating in SGMII mode without in-band negotiation.
+	 */
+	if (mode == MLO_AN_INBAND || interface != PHY_INTERFACE_MODE_SGMII)
+		return;
+
+	switch (speed) {
+	case SPEED_10:
+		if_mode = IF_MODE_SGMII_SPEED_10;
+		break;
+
+	case SPEED_100:
+		if_mode = IF_MODE_SGMII_SPEED_100;
+		break;
+
+	default:
+		if_mode = IF_MODE_SGMII_SPEED_1G;
+		break;
+	}
+	if (duplex == DUPLEX_HALF)
+		if_mode |= IF_MODE_SGMII_DUPLEX;
+
+	mdiobus_modify(pcs->bus, pcs->addr, MII_IFMODE,
+		       IF_MODE_SGMII_DUPLEX | IF_MODE_SGMII_SPEED_MSK, if_mode);
+}
+
+static const struct phylink_pcs_ops dpaa2_pcs_phylink_ops = {
+	.pcs_get_state = dpaa2_mac_pcs_get_state,
+	.pcs_config = dpaa2_mac_pcs_config,
+	.pcs_an_restart = dpaa2_mac_pcs_an_restart,
+	.pcs_link_up = dpaa2_mac_pcs_link_up,
+};
+
 static int phy_mode(enum dpmac_eth_if eth_if, phy_interface_t *if_mode)
 {
 	*if_mode = PHY_INTERFACE_MODE_NA;
@@ -15,6 +128,11 @@ static int phy_mode(enum dpmac_eth_if eth_if, phy_interface_t *if_mode)
 	case DPMAC_ETH_IF_RGMII:
 		*if_mode = PHY_INTERFACE_MODE_RGMII;
 		break;
+
+	case DPMAC_ETH_IF_SGMII:
+		*if_mode = PHY_INTERFACE_MODE_SGMII;
+		break;
+
 	default:
 		return -EINVAL;
 	}
@@ -67,6 +185,10 @@ static bool dpaa2_mac_phy_mode_mismatch(struct dpaa2_mac *mac,
 					phy_interface_t interface)
 {
 	switch (interface) {
+	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_1000BASEX:
+		return interface != mac->if_mode && !mac->pcs;
+
 	case PHY_INTERFACE_MODE_RGMII:
 	case PHY_INTERFACE_MODE_RGMII_ID:
 	case PHY_INTERFACE_MODE_RGMII_RXID:
@@ -95,13 +217,19 @@ static void dpaa2_mac_validate(struct phylink_config *config,
 	phylink_set(mask, Asym_Pause);
 
 	switch (state->interface) {
+	case PHY_INTERFACE_MODE_NA:
+	case PHY_INTERFACE_MODE_1000BASEX:
+	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_RGMII:
 	case PHY_INTERFACE_MODE_RGMII_ID:
 	case PHY_INTERFACE_MODE_RGMII_RXID:
 	case PHY_INTERFACE_MODE_RGMII_TXID:
-		phylink_set(mask, 10baseT_Full);
-		phylink_set(mask, 100baseT_Full);
+		phylink_set(mask, 1000baseX_Full);
 		phylink_set(mask, 1000baseT_Full);
+		if (state->interface == PHY_INTERFACE_MODE_1000BASEX)
+			break;
+		phylink_set(mask, 100baseT_Full);
+		phylink_set(mask, 10baseT_Full);
 		break;
 	default:
 		goto empty_set;
@@ -227,6 +355,65 @@ out:
 	return fixed;
 }
 
+static int dpaa2_pcs_create(struct dpaa2_mac *mac,
+			    struct device_node *dpmac_node, int id)
+{
+	struct mdio_device *mdiodev;
+	struct device_node *node;
+	struct mii_bus *bus;
+	int err;
+
+	node = of_parse_phandle(dpmac_node, "pcs-mdio", 0);
+	if (!node) {
+		/* allow old DT files to work */
+		netdev_warn(mac->net_dev, "pcs-mdio node not found\n");
+		return 0;
+	}
+
+	if (!of_device_is_available(node)) {
+		netdev_err(mac->net_dev, "pcs-mdio node not available\n");
+		return -ENODEV;
+	}
+
+	bus = of_mdio_find_bus(node);
+	of_node_put(node);
+	if (!bus)
+		return -EPROBE_DEFER;
+
+	mdiodev = mdio_device_create(bus, 0);
+	if (IS_ERR(mdiodev)) {
+		err = PTR_ERR(mdiodev);
+		netdev_err(mac->net_dev, "failed to create mdio device: %d\n",
+			   err);
+		goto err;
+	}
+
+	err = mdio_device_register(mdiodev);
+	if (err) {
+		netdev_err(mac->net_dev, "failed to register mdio device: %d\n",
+			   err);
+		goto dev_free;
+	}
+
+	mac->pcs = mdiodev;
+	mac->phylink_config.pcs_poll = true;
+
+	return 0;
+
+dev_free:
+	mdio_device_free(mdiodev);
+err:
+	return err;
+}
+
+static void dpaa2_pcs_destroy(struct dpaa2_mac *mac)
+{
+	if (mac->pcs) {
+		mdio_device_remove(mac->pcs);
+		mdio_device_free(mac->pcs);
+	}
+}
+
 int dpaa2_mac_connect(struct dpaa2_mac *mac)
 {
 	struct fsl_mc_device *dpmac_dev = mac->mc_dev;
@@ -235,6 +422,8 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
 	struct phylink *phylink;
 	struct dpmac_attr attr;
 	int err;
+
+	memset(&mac->phylink_config, 0, sizeof(mac->phylink_config));
 
 	err = dpmac_open(mac->mc_io, 0, dpmac_dev->obj_desc.id,
 			 &dpmac_dev->mc_handle);
@@ -278,17 +467,32 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
 		goto err_put_node;
 	}
 
+	if (attr.link_type == DPMAC_LINK_TYPE_PHY &&
+	    attr.eth_if != DPMAC_ETH_IF_RGMII) {
+		err = dpaa2_pcs_create(mac, dpmac_node, attr.id);
+		if (err)
+			goto err_put_node;
+	}
+
 	mac->phylink_config.dev = &net_dev->dev;
 	mac->phylink_config.type = PHYLINK_NETDEV;
+
+	__set_bit(mac->if_mode, mac->phylink_config.supported_interfaces);
+	if (mac->if_mode == PHY_INTERFACE_MODE_SGMII && mac->pcs)
+		__set_bit(PHY_INTERFACE_MODE_1000BASEX,
+			  mac->phylink_config.supported_interfaces);
 
 	phylink = phylink_create(&mac->phylink_config,
 				 of_fwnode_handle(dpmac_node), mac->if_mode,
 				 &dpaa2_mac_phylink_ops);
 	if (IS_ERR(phylink)) {
 		err = PTR_ERR(phylink);
-		goto err_put_node;
+		goto err_pcs_destroy;
 	}
 	mac->phylink = phylink;
+
+	if (mac->pcs)
+		phylink_add_pcs(mac->phylink, &dpaa2_pcs_phylink_ops);
 
 	rtnl_lock();
 	err = phylink_of_phy_connect(mac->phylink, dpmac_node, 0);
@@ -304,6 +508,8 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
 
 err_phylink_destroy:
 	phylink_destroy(mac->phylink);
+err_pcs_destroy:
+	dpaa2_pcs_destroy(mac);
 err_put_node:
 	of_node_put(dpmac_node);
 err_close_dpmac:
@@ -320,6 +526,8 @@ void dpaa2_mac_disconnect(struct dpaa2_mac *mac)
 	phylink_disconnect_phy(mac->phylink);
 	rtnl_unlock();
 	phylink_destroy(mac->phylink);
+	dpaa2_pcs_destroy(mac);
+
 	dpmac_close(mac->mc_io, 0, mac->mc_dev->mc_handle);
 }
 
