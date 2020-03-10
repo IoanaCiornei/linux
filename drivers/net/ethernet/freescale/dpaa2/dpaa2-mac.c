@@ -24,6 +24,7 @@ static void dpaa2_mac_pcs_get_state(struct phylink_config *config,
 	switch (state->interface) {
 	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_1000BASEX:
+	case PHY_INTERFACE_MODE_2500BASEX:
 		phylink_mii_c22_pcs_get_state(pcs, state);
 		break;
 
@@ -70,6 +71,7 @@ static int dpaa2_mac_pcs_config(struct phylink_config *config,
 		break;
 
 	case PHY_INTERFACE_MODE_1000BASEX:
+	case PHY_INTERFACE_MODE_2500BASEX:
 		mdiobus_write(pcs->bus, 0, MII_IFMODE, 0);
 		mdiobus_modify(pcs->bus, 0, MII_BMCR, BMCR_ANENABLE, bmcr);
 		ret = phylink_mii_c22_pcs_set_advertisement(pcs, interface,
@@ -235,6 +237,12 @@ static void dpaa2_mac_validate(struct phylink_config *config,
 		phylink_set(mask, 10000baseLR_Full);
 		phylink_set(mask, 10000baseLRM_Full);
 		phylink_set(mask, 10000baseER_Full);
+		if (state->interface != PHY_INTERFACE_MODE_NA)
+			break;
+		/* fallthrough */
+	case PHY_INTERFACE_MODE_2500BASEX:
+		phylink_set(mask, 2500baseX_Full);
+		phylink_set(mask, 2500baseT_Full);
 		if (state->interface != PHY_INTERFACE_MODE_NA)
 			break;
 		/* fallthrough */
