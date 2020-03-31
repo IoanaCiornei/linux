@@ -301,6 +301,13 @@
 			status = "disabled";
 		};
 
+		pcs_mdio2: mdio@8c0b000 {
+			compatible = "fsl,fman-memac-mdio";
+			reg = <0x0 0x8c0b000 0x0 0x1000>;
+			little-endian;
+			status = "disabled";
+		};
+
 		pcs_mdio3: mdio@8c0f000 {
 			compatible = "fsl,fman-memac-mdio";
 			reg = <0x0 0x8c0f000 0x0 0x1000>;
@@ -772,6 +779,7 @@
 				dpmac2: dpmac@2 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <2>;
+					pcs-mdio = <&pcs_mdio2>;
 				};
 
 				dpmac3: dpmac@3 {
