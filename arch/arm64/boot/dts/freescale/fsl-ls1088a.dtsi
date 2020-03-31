@@ -301,6 +301,20 @@
 			status = "disabled";
 		};
 
+		pcs_mdio2: mdio@8c0b000 {
+			compatible = "fsl,fman-memac-mdio";
+			reg = <0x0 0x8c0b000 0x0 0x1000>;
+			little-endian;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+
+			pcs2: pcs-phy@0 {
+				reg = <0>;
+				compatible = "fsl,pcs-phy";
+			};
+		};
+
 		pcs_mdio3: mdio@8c0f000 {
 			compatible = "fsl,fman-memac-mdio";
 			reg = <0x0 0x8c0f000 0x0 0x1000>;
@@ -338,22 +352,22 @@
 			#size-cells = <0>;
 			status = "disabled";
 
-			pcs4_0: pcs-phy@0 {
+			pcs7_0: pcs-phy@0 {
 				reg = <0>;
 				compatible = "fsl,pcs-phy";
 			};
 
-			pcs4_1: pcs-phy@1 {
+			pcs7_1: pcs-phy@1 {
 				reg = <1>;
 				compatible = "fsl,pcs-phy";
 			};
 
-			pcs4_2: pcs-phy@2 {
+			pcs7_2: pcs-phy@2 {
 				reg = <2>;
 				compatible = "fsl,pcs-phy";
 			};
 
-			pcs4_3: pcs-phy@3 {
+			pcs7_3: pcs-phy@3 {
 				reg = <3>;
 				compatible = "fsl,pcs-phy";
 			};
@@ -816,6 +830,7 @@
 				dpmac2: dpmac@2 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <2>;
+					pcs-handle = <&pcs2>;
 				};
 
 				dpmac3: dpmac@3 {
