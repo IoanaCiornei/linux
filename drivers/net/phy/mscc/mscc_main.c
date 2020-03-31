@@ -231,7 +231,7 @@ static int vsc85xx_mdix_set(struct phy_device *phydev, u8 mdix)
 	if (rc < 0)
 		return rc;
 
-	return genphy_restart_aneg(phydev);
+	return 0;
 }
 
 static int vsc85xx_downshift_get(struct phy_device *phydev, u8 *count)
