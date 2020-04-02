@@ -30,6 +30,7 @@ static void dpaa2_mac_pcs_get_state(struct phylink_config *config,
 
 	switch (state->interface) {
 	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_QSGMII:
 	case PHY_INTERFACE_MODE_1000BASEX:
 	case PHY_INTERFACE_MODE_2500BASEX:
 		phylink_mii_c22_pcs_get_state(mac->pcs_sgmii, state);
@@ -61,6 +62,7 @@ static int dpaa2_mac_pcs_config(struct phylink_config *config,
 	int ret;
 
 	switch (interface) {
+	case PHY_INTERFACE_MODE_QSGMII:
 	case PHY_INTERFACE_MODE_SGMII:
 		if_mode = IF_MODE_SGMII_ENA;
 		if (mode == MLO_AN_INBAND)
@@ -107,9 +109,11 @@ static void dpaa2_mac_pcs_link_up(struct phylink_config *config,
 	u16 if_mode;
 
 	/* The PCS PHY needs to be configured manually for the speed and
-	 * duplex when operating in SGMII mode without in-band negotiation.
+	 * duplex when operating in SGMII/QSGMII mode without in-band
+	 * negotiation.
 	 */
-	if (mode == MLO_AN_INBAND || interface != PHY_INTERFACE_MODE_SGMII)
+	if (mode == MLO_AN_INBAND || (interface != PHY_INTERFACE_MODE_SGMII ||
+				      interface != PHY_INTERFACE_MODE_QSGMII))
 		return;
 
 	switch (speed) {
@@ -217,6 +221,7 @@ static __maybe_unused bool dpaa2_mac_phy_mode_mismatch(struct dpaa2_mac *mac,
 {
 	switch (interface) {
 	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_QSGMII:
 	case PHY_INTERFACE_MODE_1000BASEX:
 		return interface != mac->if_mode && !mac->pcs_sgmii;
 
@@ -272,6 +277,7 @@ static void dpaa2_mac_validate(struct phylink_config *config,
 			break;
 		/* fallthrough */
 	case PHY_INTERFACE_MODE_1000BASEX:
+	case PHY_INTERFACE_MODE_QSGMII:
 	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_RGMII:
 	case PHY_INTERFACE_MODE_RGMII_ID:
