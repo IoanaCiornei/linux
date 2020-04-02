@@ -308,12 +308,26 @@ static void dpaa2_mac_config(struct phylink_config *config, unsigned int mode,
 {
 	struct dpaa2_mac *mac = phylink_to_dpaa2_mac(config);
 	struct dpmac_link_state *dpmac_state = &mac->state;
+	bool rx_pause, tx_pause;
 	int err;
+
+	rx_pause = !!(state->pause & MLO_PAUSE_RX);
+	tx_pause = !!(state->pause & MLO_PAUSE_TX);
 
 	if (state->an_enabled)
 		dpmac_state->options |= DPMAC_LINK_OPT_AUTONEG;
 	else
 		dpmac_state->options &= ~DPMAC_LINK_OPT_AUTONEG;
+
+	if (rx_pause)
+		dpmac_state->options |= DPMAC_LINK_OPT_PAUSE;
+	else
+		dpmac_state->options &= ~DPMAC_LINK_OPT_PAUSE;
+
+	if (rx_pause ^ tx_pause)
+		dpmac_state->options |= DPMAC_LINK_OPT_ASYM_PAUSE;
+	else
+		dpmac_state->options &= ~DPMAC_LINK_OPT_ASYM_PAUSE;
 
 	err = dpmac_set_link_state(mac->mc_io, 0,
 				   mac->mc_dev->mc_handle, dpmac_state);
