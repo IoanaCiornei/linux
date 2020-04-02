@@ -23,6 +23,7 @@ static void dpaa2_mac_pcs_get_state(struct phylink_config *config,
 
 	switch (state->interface) {
 	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_QSGMII:
 	case PHY_INTERFACE_MODE_1000BASEX:
 	case PHY_INTERFACE_MODE_2500BASEX:
 		phylink_mii_c22_pcs_get_state(pcs, state);
@@ -58,22 +59,23 @@ static int dpaa2_mac_pcs_config(struct phylink_config *config,
 		bmcr = 0;
 
 	switch (interface) {
+	case PHY_INTERFACE_MODE_QSGMII:
 	case PHY_INTERFACE_MODE_SGMII:
 		if_mode = IF_MODE_SGMII_ENA;
 		if (mode == MLO_AN_INBAND)
 			if_mode |= IF_MODE_USE_SGMII_AN;
-		mdiobus_modify(pcs->bus, 0, MII_IFMODE,
+		mdiobus_modify(pcs->bus, pcs->addr, MII_IFMODE,
 			       IF_MODE_SGMII_ENA | IF_MODE_USE_SGMII_AN,
 			       if_mode);
-		mdiobus_modify(pcs->bus, 0, MII_BMCR, BMCR_ANENABLE, bmcr);
+		mdiobus_modify(pcs->bus, pcs->addr, MII_BMCR, BMCR_ANENABLE, bmcr);
 		ret = phylink_mii_c22_pcs_set_advertisement(pcs, interface,
 							    advertising);
 		break;
 
 	case PHY_INTERFACE_MODE_1000BASEX:
 	case PHY_INTERFACE_MODE_2500BASEX:
-		mdiobus_write(pcs->bus, 0, MII_IFMODE, 0);
-		mdiobus_modify(pcs->bus, 0, MII_BMCR, BMCR_ANENABLE, bmcr);
+		mdiobus_write(pcs->bus, pcs->addr, MII_IFMODE, 0);
+		mdiobus_modify(pcs->bus, pcs->addr, MII_BMCR, BMCR_ANENABLE, bmcr);
 		ret = phylink_mii_c22_pcs_set_advertisement(pcs, interface,
 							    advertising);
 		break;
@@ -94,9 +96,11 @@ static void dpaa2_mac_pcs_link_up(struct phylink_config *config,
 	u16 if_mode;
 
 	/* The PCS PHY needs to be configured manually for the speed and
-	 * duplex when operating in SGMII mode without in-band negotiation.
+	 * duplex when operating in SGMII/QSGMII mode without in-band
+	 * negotiation.
 	 */
-	if (mode == MLO_AN_INBAND || interface != PHY_INTERFACE_MODE_SGMII)
+	if (mode == MLO_AN_INBAND || (interface != PHY_INTERFACE_MODE_SGMII ||
+				      interface != PHY_INTERFACE_MODE_QSGMII))
 		return;
 
 	switch (speed) {
@@ -133,6 +137,10 @@ static int phy_mode(enum dpmac_eth_if eth_if, phy_interface_t *if_mode)
 	switch (eth_if) {
 	case DPMAC_ETH_IF_RGMII:
 		*if_mode = PHY_INTERFACE_MODE_RGMII;
+		break;
+
+	case DPMAC_ETH_IF_QSGMII:
+		*if_mode = PHY_INTERFACE_MODE_QSGMII;
 		break;
 
 	case DPMAC_ETH_IF_SGMII:
@@ -204,6 +212,7 @@ static __maybe_unused bool dpaa2_mac_phy_mode_mismatch(struct dpaa2_mac *mac,
 {
 	switch (interface) {
 	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_QSGMII:
 	case PHY_INTERFACE_MODE_1000BASEX:
 		return interface != mac->if_mode && !mac->pcs;
 
@@ -257,6 +266,7 @@ static void dpaa2_mac_validate(struct phylink_config *config,
 			break;
 		/* fallthrough */
 	case PHY_INTERFACE_MODE_1000BASEX:
+	case PHY_INTERFACE_MODE_QSGMII:
 	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_RGMII:
 	case PHY_INTERFACE_MODE_RGMII_ID:
@@ -418,7 +428,15 @@ static int dpaa2_pcs_create(struct dpaa2_mac *mac,
 	if (!bus)
 		return -EPROBE_DEFER;
 
-	mdiodev = mdio_device_create(bus, 0);
+	/* this only works on the LS1088A SoC */
+	if (id == 3 || id == 7)
+		mdiodev = mdio_device_create(bus, 0);
+	else if (id == 4 || id == 8)
+		mdiodev = mdio_device_create(bus, 1);
+	else if (id == 5 || id == 9)
+		mdiodev = mdio_device_create(bus, 2);
+	else
+		mdiodev = mdio_device_create(bus, 3);
 	if (IS_ERR(mdiodev)) {
 		err = PTR_ERR(mdiodev);
 		netdev_err(mac->net_dev, "failed to create mdio device: %d\n",
