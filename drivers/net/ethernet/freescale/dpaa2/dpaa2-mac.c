@@ -139,10 +139,6 @@ static int phy_mode(enum dpmac_eth_if eth_if, phy_interface_t *if_mode)
 		*if_mode = PHY_INTERFACE_MODE_RGMII;
 		break;
 
-	case DPMAC_ETH_IF_QSGMII:
-		*if_mode = PHY_INTERFACE_MODE_QSGMII;
-		break;
-
 	case DPMAC_ETH_IF_SGMII:
 		*if_mode = PHY_INTERFACE_MODE_SGMII;
 		break;
