@@ -2428,6 +2428,7 @@ void phylink_mii_c45_pcs_get_state(struct mdio_device *pcs,
 
 	switch (state->interface) {
 	case PHY_INTERFACE_MODE_10GBASER:
+	case PHY_INTERFACE_MODE_USXGMII:
 		state->speed = SPEED_10000;
 		state->duplex = DUPLEX_FULL;
 		break;
