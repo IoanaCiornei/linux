@@ -30,6 +30,7 @@ static void dpaa2_mac_pcs_get_state(struct phylink_config *config,
 		break;
 
 	case PHY_INTERFACE_MODE_10GBASER:
+	case PHY_INTERFACE_MODE_USXGMII:
 		phylink_mii_c45_pcs_get_state(pcs, state);
 		break;
 
@@ -45,6 +46,7 @@ static void dpaa2_mac_pcs_an_restart(struct phylink_config *config)
 	phylink_mii_c22_pcs_an_restart(pcs);
 }
 
+#define C45_ADDR(d,a)	(MII_ADDR_C45 | (d) << 16 | (a))
 static int dpaa2_mac_pcs_config(struct phylink_config *config,
 				unsigned int mode, phy_interface_t interface,
 				const unsigned long *advertising)
@@ -80,6 +82,27 @@ static int dpaa2_mac_pcs_config(struct phylink_config *config,
 							    advertising);
 		break;
 
+	case PHY_INTERFACE_MODE_USXGMII:
+		printk(KERN_ERR "%s %d\n", __func__, __LINE__);
+
+		// enable usxgmii autoneg
+		mdiobus_modify(pcs->bus, pcs->addr,
+			       C45_ADDR(MDIO_MMD_VEND2, MDIO_CTRL1),
+			       0x1000, 0x1000);
+
+		ret = 0;
+#if 0
+		if_mode = IF_MODE_SGMII_ENA;
+		if (mode == MLO_AN_INBAND)
+			if_mode |= IF_MODE_USE_SGMII_AN;
+		mdiobus_modify(pcs->bus, pcs->addr, MII_IFMODE,
+			       IF_MODE_SGMII_ENA | IF_MODE_USE_SGMII_AN,
+			       if_mode);
+		mdiobus_modify(pcs->bus, pcs->addr, MII_BMCR, BMCR_ANENABLE, bmcr);
+		ret = phylink_mii_c22_pcs_set_advertisement(pcs, interface,
+							    advertising);
+#endif
+		break;
 	default:
 		ret = 0;
 		break;
@@ -155,6 +178,10 @@ static int phy_mode(enum dpmac_eth_if eth_if, phy_interface_t *if_mode)
 		*if_mode = PHY_INTERFACE_MODE_10GBASER;
 		break;
 
+	case DPMAC_ETH_IF_USXGMII:
+		*if_mode = PHY_INTERFACE_MODE_USXGMII;
+		break;
+
 	default:
 		return -EINVAL;
 	}
@@ -210,6 +237,7 @@ static __maybe_unused bool dpaa2_mac_phy_mode_mismatch(struct dpaa2_mac *mac,
 	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_QSGMII:
 	case PHY_INTERFACE_MODE_1000BASEX:
+	case PHY_INTERFACE_MODE_USXGMII:
 		return interface != mac->if_mode && !mac->pcs;
 
 	case PHY_INTERFACE_MODE_XAUI:
@@ -245,6 +273,7 @@ static void dpaa2_mac_validate(struct phylink_config *config,
 	case PHY_INTERFACE_MODE_NA:
 	case PHY_INTERFACE_MODE_XAUI:
 	case PHY_INTERFACE_MODE_10GBASER:
+	case PHY_INTERFACE_MODE_USXGMII:
 		phylink_set(mask, 10000baseT_Full);
 		phylink_set(mask, 10000baseKR_Full);
 		phylink_set(mask, 10000baseCR_Full);
@@ -438,6 +467,9 @@ static int dpaa2_pcs_create(struct dpaa2_mac *mac,
 	if (!bus)
 		return -EPROBE_DEFER;
 
+	// TODO
+	mdiodev = mdio_device_create(bus, 0);
+#if 0
 	/* this only works on the LS1088A SoC */
 	if (id == 3 || id == 7)
 		mdiodev = mdio_device_create(bus, 0);
@@ -447,6 +479,7 @@ static int dpaa2_pcs_create(struct dpaa2_mac *mac,
 		mdiodev = mdio_device_create(bus, 2);
 	else
 		mdiodev = mdio_device_create(bus, 3);
+#endif
 	if (IS_ERR(mdiodev)) {
 		err = PTR_ERR(mdiodev);
 		netdev_err(mac->net_dev, "failed to create mdio device: %d\n",
