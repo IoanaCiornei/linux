@@ -446,22 +446,31 @@ static int dpaa2_pcs_create(struct dpaa2_mac *mac,
 			    struct device_node *dpmac_node, int id)
 {
 	struct mdio_device *mdiodev;
+	struct phy_device *pcs_phy;
 	struct device_node *node;
 	struct mii_bus *bus;
 	int err;
 
-	node = of_parse_phandle(dpmac_node, "pcs-mdio", 0);
+	node = of_parse_phandle(dpmac_node, "pcs-handle", 0);
 	if (!node) {
 		/* allow old DT files to work */
-		netdev_warn(mac->net_dev, "pcs-mdio node not found\n");
+		netdev_warn(mac->net_dev, "pcs-handle node not found\n");
 		return 0;
 	}
 
 	if (!of_device_is_available(node)) {
-		netdev_err(mac->net_dev, "pcs-mdio node not available\n");
+		netdev_err(mac->net_dev, "pcs-handle node not available\n");
 		return -ENODEV;
 	}
 
+	pcs_phy = of_phy_find_device(node);
+	if (!pcs_phy) {
+		netdev_err(mac->net_dev, "failed to find pcs device");
+		return -ENODEV;
+	}
+
+	mdiodev = &(pcs_phy->mdio);
+#if 0
 	bus = of_mdio_find_bus(node);
 	of_node_put(node);
 	if (!bus)
@@ -469,7 +478,6 @@ static int dpaa2_pcs_create(struct dpaa2_mac *mac,
 
 	// TODO
 	mdiodev = mdio_device_create(bus, 0);
-#if 0
 	/* this only works on the LS1088A SoC */
 	if (id == 3 || id == 7)
 		mdiodev = mdio_device_create(bus, 0);
@@ -479,7 +487,6 @@ static int dpaa2_pcs_create(struct dpaa2_mac *mac,
 		mdiodev = mdio_device_create(bus, 2);
 	else
 		mdiodev = mdio_device_create(bus, 3);
-#endif
 	if (IS_ERR(mdiodev)) {
 		err = PTR_ERR(mdiodev);
 		netdev_err(mac->net_dev, "failed to create mdio device: %d\n",
@@ -494,15 +501,17 @@ static int dpaa2_pcs_create(struct dpaa2_mac *mac,
 		goto dev_free;
 	}
 
+#endif
 	mac->pcs = mdiodev;
 	mac->phylink_config.pcs_poll = true;
 
 	return 0;
-
+#if 0
 dev_free:
 	mdio_device_free(mdiodev);
 err:
 	return err;
+#endif
 }
 
 static void dpaa2_pcs_destroy(struct dpaa2_mac *mac)

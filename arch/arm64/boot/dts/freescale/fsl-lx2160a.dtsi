@@ -1154,6 +1154,10 @@
 			reg = <0x0 0x8c0f000 0x0 0x1000>;
 			little-endian;
 			status = "disabled";
+
+			pcs_phy3: ethernet-phy@0 {
+				reg = <0>;
+			};
 		};
 
 		pcs_mdio4: mdio@8c13000 {
@@ -1161,6 +1165,11 @@
 			reg = <0x0 0x8c13000 0x0 0x1000>;
 			little-endian;
 			status = "disabled";
+
+			pcs_phy4: ethernet-phy@0 {
+				reg = <0>;
+			};
+
 		};
 
 		pcs_mdio5: mdio@8c17000 {
@@ -1301,13 +1310,13 @@
 				dpmac3: dpmac@3 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <0x3>;
-					pcs-mdio = <&pcs_mdio3>;
+					pcs-handle = <&pcs_phy3>;
 				};
 
 				dpmac4: dpmac@4 {
 					compatible = "fsl,qoriq-mc-dpmac";
 					reg = <0x4>;
-					pcs-mdio = <&pcs_mdio4>;
+					pcs-handle = <&pcs_phy4>;
 				};
 
 				dpmac5: dpmac@5 {
