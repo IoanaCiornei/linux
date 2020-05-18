@@ -15,6 +15,7 @@
 #include <linux/fsl/mc.h>
 #include <linux/bpf.h>
 #include <linux/bpf_trace.h>
+#include <net/pkt_cls.h>
 #include <net/sock.h>
 
 #include "dpaa2-eth.h"
@@ -2074,16 +2075,46 @@ static int update_xps(struct dpaa2_eth_priv *priv)
 	return err;
 }
 
-static int dpaa2_eth_setup_tc(struct net_device *net_dev,
-			      enum tc_setup_type type, void *type_data)
+static int dpaa2_eth_setup_tbf(struct net_device *net_dev, struct tc_tbf_qopt_offload *p)
 {
 	struct dpaa2_eth_priv *priv = netdev_priv(net_dev);
-	struct tc_mqprio_qopt *mqprio = type_data;
+	struct dpni_tx_shaping_cfg tx_cr_shaper = { 0 };
+	struct dpni_tx_shaping_cfg tx_er_shaper = { 0 };
+	int err;
+
+	if (p->command == TC_TBF_STATS)
+		return -EOPNOTSUPP;
+
+	if (p->command == TC_TBF_REPLACE) {
+		tx_cr_shaper.max_burst_size = p->replace_params.max_size;
+		tx_cr_shaper.rate_limit = div_u64(p->replace_params.rate.rate_bytes_ps * 8, 1000000);
+	} else if (p->command == TC_TBF_DESTROY) {
+		// what is the maximum rate for this port???
+		tx_cr_shaper.max_burst_size = 63487; // TODO
+		tx_cr_shaper.rate_limit = 800000;
+	}
+
+	printk(KERN_ERR "%s %d: rate = %u Mbps | burst = %u bytes\n",
+			__func__, __LINE__,
+			tx_cr_shaper.rate_limit,
+			tx_cr_shaper.max_burst_size);
+
+	err = dpni_set_tx_shaping(priv->mc_io, 0, priv->mc_token, &tx_cr_shaper, &tx_er_shaper, 0);
+	if (err) {
+		printk(KERN_ERR "dpni_set_tx_shaping() = %d \n", err);
+		return err;
+	}
+
+	return 0;
+}
+
+
+static int dpaa2_eth_setup_mqprio(struct net_device *net_dev,
+				  struct tc_mqprio_qopt *mqprio)
+{
+	struct dpaa2_eth_priv *priv = netdev_priv(net_dev);
 	u8 num_tc, num_queues;
 	int i;
-
-	if (type != TC_SETUP_QDISC_MQPRIO)
-		return -EOPNOTSUPP;
 
 	mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
 	num_queues = dpaa2_eth_queue_count(priv);
@@ -2094,7 +2125,7 @@ static int dpaa2_eth_setup_tc(struct net_device *net_dev,
 
 	if (num_tc  > dpaa2_eth_tc_count(priv)) {
 		netdev_err(net_dev, "Max %d traffic classes supported\n",
-			   dpaa2_eth_tc_count(priv));
+		   	   dpaa2_eth_tc_count(priv));
 		return -EOPNOTSUPP;
 	}
 
@@ -2114,6 +2145,19 @@ out:
 	update_xps(priv);
 
 	return 0;
+}
+
+static int dpaa2_eth_setup_tc(struct net_device *net_dev,
+			      enum tc_setup_type type, void *type_data)
+{
+	switch (type) {
+	case TC_SETUP_QDISC_MQPRIO:
+		return dpaa2_eth_setup_mqprio(net_dev, type_data);
+	case TC_SETUP_QDISC_TBF:
+		return dpaa2_eth_setup_tbf(net_dev, type_data);
+	default:
+		return -EOPNOTSUPP;
+	}
 }
 
 static const struct net_device_ops dpaa2_eth_ops = {
@@ -3580,7 +3624,7 @@ static int netdev_init(struct net_device *net_dev)
 	net_dev->features = NETIF_F_RXCSUM |
 			    NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
 			    NETIF_F_SG | NETIF_F_HIGHDMA |
-			    NETIF_F_LLTX;
+			    NETIF_F_LLTX | NETIF_F_HW_TC;
 	net_dev->hw_features = net_dev->features;
 
 	return 0;
