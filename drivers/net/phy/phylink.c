@@ -578,6 +578,7 @@ static void phylink_resolve(struct work_struct *w)
 	struct net_device *ndev = pl->netdev;
 	int link_changed;
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	mutex_lock(&pl->state_mutex);
 	if (pl->phylink_disable_state) {
 		pl->mac_link_dropped = false;
@@ -587,17 +588,20 @@ static void phylink_resolve(struct work_struct *w)
 	} else {
 		switch (pl->cur_link_an_mode) {
 		case MLO_AN_PHY:
+			printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 			link_state = pl->phy_state;
 			phylink_apply_manual_flow(pl, &link_state);
 			phylink_mac_config_up(pl, &link_state);
 			break;
 
 		case MLO_AN_FIXED:
+			printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 			phylink_get_fixed_state(pl, &link_state);
 			phylink_mac_config_up(pl, &link_state);
 			break;
 
 		case MLO_AN_INBAND:
+			printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 			phylink_mac_pcs_get_state(pl, &link_state);
 
 			/* If we have a phy, the "up" state is the union of
@@ -609,23 +613,28 @@ static void phylink_resolve(struct work_struct *w)
 			if (pl->phydev && pl->phy_state.link) {
 				link_state.interface = pl->phy_state.interface;
 
+				printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 				/* If we have a PHY, we need to update with
 				 * the PHY flow control bits. */
 				link_state.pause = pl->phy_state.pause;
 				phylink_apply_manual_flow(pl, &link_state);
 				phylink_mac_config(pl, &link_state);
 			} else {
+				printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 				phylink_apply_manual_flow(pl, &link_state);
 			}
+			printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 			break;
 		}
 	}
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	if (pl->netdev)
 		link_changed = (link_state.link != netif_carrier_ok(ndev));
 	else
 		link_changed = (link_state.link != pl->old_link_state);
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	if (link_changed) {
 		pl->old_link_state = link_state.link;
 		if (!link_state.link)
@@ -633,10 +642,12 @@ static void phylink_resolve(struct work_struct *w)
 		else
 			phylink_link_up(pl, link_state);
 	}
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	if (!link_state.link && pl->mac_link_dropped) {
 		pl->mac_link_dropped = false;
 		queue_work(system_power_efficient_wq, &pl->resolve);
 	}
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	mutex_unlock(&pl->state_mutex);
 }
 

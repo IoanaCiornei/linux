@@ -23,6 +23,29 @@
 #define IF_MODE_SGMII_SPEED_MSK	(3 << 2)
 #define IF_MODE_SGMII_DUPLEX	BIT(4)		// set = half duplex
 
+/* TODO: should find a better place for these */
+#define USXGMII_BMCR_RESET		BIT(15)
+#define USXGMII_BMCR_AN_EN		BIT(12)
+#define USXGMII_BMCR_RST_AN		BIT(9)
+#define USXGMII_BMSR_LNKS(status)	(((status) & GENMASK(2, 2)) >> 2)
+#define USXGMII_BMSR_AN_CMPL(status)	(((status) & GENMASK(5, 5)) >> 5)
+#define USXGMII_ADVERTISE_LNKS(x)	(((x) << 15) & BIT(15))
+#define USXGMII_ADVERTISE_FDX		BIT(12)
+#define USXGMII_ADVERTISE_SPEED(x)	(((x) << 9) & GENMASK(11, 9))
+#define USXGMII_LPA_LNKS(lpa)		((lpa) >> 15)
+#define USXGMII_LPA_DUPLEX(lpa)		(((lpa) & GENMASK(12, 12)) >> 12)
+#define USXGMII_LPA_SPEED(lpa)		(((lpa) & GENMASK(11, 9)) >> 9)
+
+#define VSC9959_TAS_GCL_ENTRY_MAX	63
+
+enum usxgmii_speed {
+	USXGMII_SPEED_10	= 0,
+	USXGMII_SPEED_100	= 1,
+	USXGMII_SPEED_1000	= 2,
+	USXGMII_SPEED_2500	= 4,
+};
+
+
 static void dpaa2_mac_pcs_get_state(struct phylink_config *config,
 				    struct phylink_link_state *state)
 {
@@ -457,6 +480,103 @@ out:
 	return fixed;
 }
 
+int phylink_mii_c45_pcs_set_advertisement(struct mdio_device *pcs,
+					  phy_interface_t interface,
+					  const unsigned long *advertising)
+{
+	struct mii_bus *bus = pcs->bus;
+	int addr = pcs->addr;
+	int val, ret;
+	u16 adv;
+
+	switch (interface) {
+	case PHY_INTERFACE_MODE_USXGMII:
+
+	default:
+		return 0;
+	}
+#if 0
+»       case PHY_INTERFACE_MODE_SGMII:
+»       »       val = mdiobus_read(bus, addr, MII_ADVERTISE);
+»       »       if (val < 0)
+»       »       »       return val;
+
+»       »       if (val == 0x0001)
+»       »       »       return 0;
+
+»       »       ret = mdiobus_write(bus, addr, MII_ADVERTISE, 0x0001);
+»       »       if (ret < 0)
+»       »       »       return ret;
+
+»       »       return 1;
+
+»       default:
+»       »       /* Nothing to do for other modes */
+»       »       return 0;
+»       }
+#endif
+}
+
+/**
+ * TODO: phylink_mii_c22_pcs_config() - configure clause 22 PCS
+ * @pcs: a pointer to a &struct mdio_device.
+ * @mode: link autonegotiation mode
+ * @interface: the PHY interface mode being configured
+ * @advertising: the ethtool advertisement mask
+ *
+ * Configure a Clause 22 PCS PHY with the appropriate negotiation
+ * parameters for the @mode, @interface and @advertising parameters.
+ * Returns negative error number on failure, zero if the advertisement
+ * has not changed, or positive if there is a change.
+ */
+int phylink_mii_c45_pcs_config(struct mdio_device *pcs, unsigned int mode,
+			       phy_interface_t interface,
+			       const unsigned long *advertising)
+{
+	bool changed;
+	u16 bmcr;
+	int ret;
+
+	ret = phylink_mii_c45_pcs_set_advertisement(pcs, interface,
+						    advertising);
+	if (ret < 0)
+		return ret;
+
+	changed = ret > 0;
+
+	bmcr = mode == MLO_AN_INBAND ? BMCR_ANENABLE : 0;
+	ret = mdiobus_modify(pcs->bus, pcs->addr, MII_BMCR,
+			     BMCR_ANENABLE, bmcr);
+	if (ret < 0)
+		return ret;
+
+	return changed ? 1 : 0;
+}
+
+static int dpaa2_pcs_init(struct dpaa2_mac *mac)
+{
+	u16 advertising;
+
+	switch (mac->if_mode) {
+	case PHY_INTERFACE_MODE_USXGMII:
+
+		advertising = USXGMII_ADVERTISE_SPEED(USXGMII_SPEED_2500) |
+			USXGMII_ADVERTISE_LNKS(1) |
+			ADVERTISE_SGMII |
+			ADVERTISE_LPACK |
+			USXGMII_ADVERTISE_FDX;
+
+		mdiobus_modify(mac->pcs_10g->bus, mac->pcs_10g->addr,
+		       	       C45_ADDR(MDIO_MMD_VEND2, MII_ADVERTISE),
+		       	       advertising, advertising);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int dpaa2_pcs_create(struct dpaa2_mac *mac,
 			    struct device_node *dpmac_node, int id)
 {
@@ -555,11 +675,15 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
 		goto err_put_node;
 	}
 
-	if (attr.link_type == DPMAC_LINK_TYPE_PHY &&
-	    attr.eth_if != DPMAC_ETH_IF_RGMII) {
+	/* Probe on both TYPE_PHY and TYPE_BACKPLANE */
+	if (attr.eth_if != DPMAC_ETH_IF_RGMII) {
 		err = dpaa2_pcs_create(mac, dpmac_node, attr.id);
 		if (err)
 			goto err_put_node;
+
+		err = dpaa2_pcs_init(mac);
+		if (err)
+			goto err_pcs_destroy;
 	}
 
 	mac->phylink_config.dev = &net_dev->dev;
