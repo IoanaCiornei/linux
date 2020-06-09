@@ -6,27 +6,6 @@
 
 #include <linux/phy.h>
 
-/* PCS registers */
-#define ENETC_PCS_LINK_TIMER1			0x12
-#define ENETC_PCS_LINK_TIMER1_VAL		0x06a0
-#define ENETC_PCS_LINK_TIMER2			0x13
-#define ENETC_PCS_LINK_TIMER2_VAL		0x0003
-#define ENETC_PCS_IF_MODE			0x14
-#define ENETC_PCS_IF_MODE_SGMII_EN		BIT(0)
-#define ENETC_PCS_IF_MODE_USE_SGMII_AN		BIT(1)
-#define ENETC_PCS_IF_MODE_SGMII_SPEED(x)	(((x) << 2) & GENMASK(3, 2))
-
-/* Not a mistake, the SerDes PLL needs to be set at 3.125 GHz by Reset
- * Configuration Word (RCW, outside Linux control) for 2.5G SGMII mode. The PCS
- * still thinks it's at gigabit.
- */
-enum enetc_pcs_speed {
-	ENETC_PCS_SPEED_10	= 0,
-	ENETC_PCS_SPEED_100	= 1,
-	ENETC_PCS_SPEED_1000	= 2,
-	ENETC_PCS_SPEED_2500	= 2,
-};
-
 struct enetc_hw;
 
 struct enetc_mdio_priv {
