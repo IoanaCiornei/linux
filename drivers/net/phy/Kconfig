@@ -235,6 +235,12 @@ config MDIO_XPCS
 	  This module provides helper functions for Synopsys DesignWare XPCS
 	  controllers.
 
+config PCS_LYNX
+	tristate
+	help
+	  This module provides helper functions for Lynx PCS enablement
+	  representing the PCS as an MDIO device.
+
 endif
 endif
 
