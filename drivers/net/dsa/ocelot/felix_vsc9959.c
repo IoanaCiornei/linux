@@ -17,19 +17,6 @@
 #define VSC9959_VCAP_IS2_ENTRY_WIDTH	376
 #define VSC9959_VCAP_PORT_CNT		6
 
-/* TODO: should find a better place for these */
-#define USXGMII_BMCR_RESET		BIT(15)
-#define USXGMII_BMCR_AN_EN		BIT(12)
-#define USXGMII_BMCR_RST_AN		BIT(9)
-#define USXGMII_BMSR_LNKS(status)	(((status) & GENMASK(2, 2)) >> 2)
-#define USXGMII_BMSR_AN_CMPL(status)	(((status) & GENMASK(5, 5)) >> 5)
-#define USXGMII_ADVERTISE_LNKS(x)	(((x) << 15) & BIT(15))
-#define USXGMII_ADVERTISE_FDX		BIT(12)
-#define USXGMII_ADVERTISE_SPEED(x)	(((x) << 9) & GENMASK(11, 9))
-#define USXGMII_LPA_LNKS(lpa)		((lpa) >> 15)
-#define USXGMII_LPA_DUPLEX(lpa)		(((lpa) & GENMASK(12, 12)) >> 12)
-#define USXGMII_LPA_SPEED(lpa)		(((lpa) & GENMASK(11, 9)) >> 9)
-
 #define VSC9959_TAS_GCL_ENTRY_MAX	63
 
 enum usxgmii_speed {
@@ -728,181 +715,15 @@ static int vsc9959_reset(struct ocelot *ocelot)
 	return 0;
 }
 
-static void vsc9959_pcs_an_restart_sgmii(struct phy_device *pcs)
-{
-	phy_set_bits(pcs, MII_BMCR, BMCR_ANRESTART);
-}
-
-static void vsc9959_pcs_an_restart_usxgmii(struct phy_device *pcs)
-{
-	phy_write_mmd(pcs, MDIO_MMD_VEND2, MII_BMCR,
-		      USXGMII_BMCR_RESET |
-		      USXGMII_BMCR_AN_EN |
-		      USXGMII_BMCR_RST_AN);
-}
-
 static void vsc9959_pcs_an_restart(struct ocelot *ocelot, int port)
 {
 	struct felix *felix = ocelot_to_felix(ocelot);
-	struct phy_device *pcs = felix->pcs[port];
+	struct mdio_lynx_pcs *pcs = felix->pcs[port];
 
 	if (!pcs)
 		return;
 
-	switch (pcs->interface) {
-	case PHY_INTERFACE_MODE_SGMII:
-	case PHY_INTERFACE_MODE_QSGMII:
-		vsc9959_pcs_an_restart_sgmii(pcs);
-		break;
-	case PHY_INTERFACE_MODE_USXGMII:
-		vsc9959_pcs_an_restart_usxgmii(pcs);
-		break;
-	default:
-		dev_err(ocelot->dev, "Invalid PCS interface type %s\n",
-			phy_modes(pcs->interface));
-		break;
-	}
-}
-
-/* We enable SGMII AN only when the PHY has managed = "in-band-status" in the
- * device tree. If we are in MLO_AN_PHY mode, we program directly state->speed
- * into the PCS, which is retrieved out-of-band over MDIO. This also has the
- * benefit of working with SGMII fixed-links, like downstream switches, where
- * both link partners attempt to operate as AN slaves and therefore AN never
- * completes.  But it also has the disadvantage that some PHY chips don't pass
- * traffic if SGMII AN is enabled but not completed (acknowledged by us), so
- * setting MLO_AN_INBAND is actually required for those.
- */
-static void vsc9959_pcs_init_sgmii(struct phy_device *pcs,
-				   unsigned int link_an_mode,
-				   const struct phylink_link_state *state)
-{
-	if (link_an_mode == MLO_AN_INBAND) {
-		int bmsr, bmcr;
-
-		/* Some PHYs like VSC8234 don't like it when AN restarts on
-		 * their system  side and they restart line side AN too, going
-		 * into an endless link up/down loop.  Don't restart PCS AN if
-		 * link is up already.
-		 * We do check that AN is enabled just in case this is the 1st
-		 * call, PCS detects a carrier but AN is disabled from power on
-		 * or by boot loader.
-		 */
-		bmcr = phy_read(pcs, MII_BMCR);
-		if (bmcr < 0)
-			return;
-
-		bmsr = phy_read(pcs, MII_BMSR);
-		if (bmsr < 0)
-			return;
-
-		if ((bmcr & BMCR_ANENABLE) && (bmsr & BMSR_LSTATUS))
-			return;
-
-		/* SGMII spec requires tx_config_Reg[15:0] to be exactly 0x4001
-		 * for the MAC PCS in order to acknowledge the AN.
-		 */
-		phy_write(pcs, MII_ADVERTISE, ADVERTISE_SGMII |
-					      ADVERTISE_LPACK);
-
-		phy_write(pcs, ENETC_PCS_IF_MODE,
-			  ENETC_PCS_IF_MODE_SGMII_EN |
-			  ENETC_PCS_IF_MODE_USE_SGMII_AN);
-
-		/* Adjust link timer for SGMII */
-		phy_write(pcs, ENETC_PCS_LINK_TIMER1,
-			  ENETC_PCS_LINK_TIMER1_VAL);
-		phy_write(pcs, ENETC_PCS_LINK_TIMER2,
-			  ENETC_PCS_LINK_TIMER2_VAL);
-
-		phy_write(pcs, MII_BMCR, BMCR_ANRESTART | BMCR_ANENABLE);
-	} else {
-		int speed;
-
-		if (state->duplex == DUPLEX_HALF) {
-			phydev_err(pcs, "Half duplex not supported\n");
-			return;
-		}
-		switch (state->speed) {
-		case SPEED_1000:
-			speed = ENETC_PCS_SPEED_1000;
-			break;
-		case SPEED_100:
-			speed = ENETC_PCS_SPEED_100;
-			break;
-		case SPEED_10:
-			speed = ENETC_PCS_SPEED_10;
-			break;
-		case SPEED_UNKNOWN:
-			/* Silently don't do anything */
-			return;
-		default:
-			phydev_err(pcs, "Invalid PCS speed %d\n", state->speed);
-			return;
-		}
-
-		phy_write(pcs, ENETC_PCS_IF_MODE,
-			  ENETC_PCS_IF_MODE_SGMII_EN |
-			  ENETC_PCS_IF_MODE_SGMII_SPEED(speed));
-
-		/* Yes, not a mistake: speed is given by IF_MODE. */
-		phy_write(pcs, MII_BMCR, BMCR_RESET |
-					 BMCR_SPEED1000 |
-					 BMCR_FULLDPLX);
-	}
-}
-
-/* 2500Base-X is SerDes protocol 7 on Felix and 6 on ENETC. It is a SerDes lane
- * clocked at 3.125 GHz which encodes symbols with 8b/10b and does not have
- * auto-negotiation of any link parameters. Electrically it is compatible with
- * a single lane of XAUI.
- * The hardware reference manual wants to call this mode SGMII, but it isn't
- * really, since the fundamental features of SGMII:
- * - Downgrading the link speed by duplicating symbols
- * - Auto-negotiation
- * are not there.
- * The speed is configured at 1000 in the IF_MODE and BMCR MDIO registers
- * because the clock frequency is actually given by a PLL configured in the
- * Reset Configuration Word (RCW).
- * Since there is no difference between fixed speed SGMII w/o AN and 802.3z w/o
- * AN, we call this PHY interface type 2500Base-X. In case a PHY negotiates a
- * lower link speed on line side, the system-side interface remains fixed at
- * 2500 Mbps and we do rate adaptation through pause frames.
- */
-static void vsc9959_pcs_init_2500basex(struct phy_device *pcs,
-				       unsigned int link_an_mode,
-				       const struct phylink_link_state *state)
-{
-	if (link_an_mode == MLO_AN_INBAND) {
-		phydev_err(pcs, "AN not supported on 3.125GHz SerDes lane\n");
-		return;
-	}
-
-	phy_write(pcs, ENETC_PCS_IF_MODE,
-		  ENETC_PCS_IF_MODE_SGMII_EN |
-		  ENETC_PCS_IF_MODE_SGMII_SPEED(ENETC_PCS_SPEED_2500));
-
-	phy_write(pcs, MII_BMCR, BMCR_SPEED1000 |
-				 BMCR_FULLDPLX |
-				 BMCR_RESET);
-}
-
-static void vsc9959_pcs_init_usxgmii(struct phy_device *pcs,
-				     unsigned int link_an_mode,
-				     const struct phylink_link_state *state)
-{
-	if (link_an_mode != MLO_AN_INBAND) {
-		phydev_err(pcs, "USXGMII only supports in-band AN for now\n");
-		return;
-	}
-
-	/* Configure device ability for the USXGMII Replicator */
-	phy_write_mmd(pcs, MDIO_MMD_VEND2, MII_ADVERTISE,
-		      USXGMII_ADVERTISE_SPEED(USXGMII_SPEED_2500) |
-		      USXGMII_ADVERTISE_LNKS(1) |
-		      ADVERTISE_SGMII |
-		      ADVERTISE_LPACK |
-		      USXGMII_ADVERTISE_FDX);
+	pcs->an_restart(pcs->dev, ocelot->ports[port]->phy_mode);
 }
 
 static void vsc9959_pcs_init(struct ocelot *ocelot, int port,
@@ -910,178 +731,37 @@ static void vsc9959_pcs_init(struct ocelot *ocelot, int port,
 			     const struct phylink_link_state *state)
 {
 	struct felix *felix = ocelot_to_felix(ocelot);
-	struct phy_device *pcs = felix->pcs[port];
+	struct mdio_lynx_pcs *pcs = felix->pcs[port];
 
 	if (!pcs)
 		return;
 
-	/* The PCS does not implement the BMSR register fully, so capability
-	 * detection via genphy_read_abilities does not work. Since we can get
-	 * the PHY config word from the LPA register though, there is still
-	 * value in using the generic phy_resolve_aneg_linkmode function. So
-	 * populate the supported and advertising link modes manually here.
-	 */
-	linkmode_set_bit_array(phy_basic_ports_array,
-			       ARRAY_SIZE(phy_basic_ports_array),
-			       pcs->supported);
-	linkmode_set_bit(ETHTOOL_LINK_MODE_10baseT_Full_BIT, pcs->supported);
-	linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, pcs->supported);
-	linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, pcs->supported);
-	if (pcs->interface == PHY_INTERFACE_MODE_2500BASEX ||
-	    pcs->interface == PHY_INTERFACE_MODE_USXGMII)
-		linkmode_set_bit(ETHTOOL_LINK_MODE_2500baseX_Full_BIT,
-				 pcs->supported);
-	if (pcs->interface != PHY_INTERFACE_MODE_2500BASEX)
-		linkmode_set_bit(ETHTOOL_LINK_MODE_Autoneg_BIT,
-				 pcs->supported);
-	phy_advertise_supported(pcs);
-
-	switch (pcs->interface) {
-	case PHY_INTERFACE_MODE_SGMII:
-	case PHY_INTERFACE_MODE_QSGMII:
-		vsc9959_pcs_init_sgmii(pcs, link_an_mode, state);
-		break;
-	case PHY_INTERFACE_MODE_2500BASEX:
-		vsc9959_pcs_init_2500basex(pcs, link_an_mode, state);
-		break;
-	case PHY_INTERFACE_MODE_USXGMII:
-		vsc9959_pcs_init_usxgmii(pcs, link_an_mode, state);
-		break;
-	default:
-		dev_err(ocelot->dev, "Unsupported link mode %s\n",
-			phy_modes(pcs->interface));
-	}
-}
-
-static void vsc9959_pcs_link_state_resolve(struct phy_device *pcs,
-					   struct phylink_link_state *state)
-{
-	state->an_complete = pcs->autoneg_complete;
-	state->an_enabled = pcs->autoneg;
-	state->link = pcs->link;
-	state->duplex = pcs->duplex;
-	state->speed = pcs->speed;
-	/* SGMII AN does not negotiate flow control, but that's ok,
-	 * since phylink already knows that, and does:
-	 *	link_state.pause |= pl->phy_state.pause;
-	 */
-	state->pause = MLO_PAUSE_NONE;
-
-	phydev_dbg(pcs,
-		   "mode=%s/%s/%s adv=%*pb lpa=%*pb link=%u an_enabled=%u an_complete=%u\n",
-		   phy_modes(pcs->interface),
-		   phy_speed_to_str(pcs->speed),
-		   phy_duplex_to_str(pcs->duplex),
-		   __ETHTOOL_LINK_MODE_MASK_NBITS, pcs->advertising,
-		   __ETHTOOL_LINK_MODE_MASK_NBITS, pcs->lp_advertising,
-		   pcs->link, pcs->autoneg, pcs->autoneg_complete);
-}
-
-static void vsc9959_pcs_link_state_sgmii(struct phy_device *pcs,
-					 struct phylink_link_state *state)
-{
-	int err;
-
-	err = genphy_update_link(pcs);
-	if (err < 0)
-		return;
-
-	if (pcs->autoneg_complete) {
-		u16 lpa = phy_read(pcs, MII_LPA);
-
-		mii_lpa_to_linkmode_lpa_sgmii(pcs->lp_advertising, lpa);
-
-		phy_resolve_aneg_linkmode(pcs);
-	}
-}
-
-static void vsc9959_pcs_link_state_2500basex(struct phy_device *pcs,
-					     struct phylink_link_state *state)
-{
-	int err;
-
-	err = genphy_update_link(pcs);
-	if (err < 0)
-		return;
-
-	pcs->speed = SPEED_2500;
-	pcs->asym_pause = true;
-	pcs->pause = true;
-}
-
-static void vsc9959_pcs_link_state_usxgmii(struct phy_device *pcs,
-					   struct phylink_link_state *state)
-{
-	int status, lpa;
-
-	status = phy_read_mmd(pcs, MDIO_MMD_VEND2, MII_BMSR);
-	if (status < 0)
-		return;
-
-	pcs->autoneg = true;
-	pcs->autoneg_complete = USXGMII_BMSR_AN_CMPL(status);
-	pcs->link = USXGMII_BMSR_LNKS(status);
-
-	if (!pcs->link || !pcs->autoneg_complete)
-		return;
-
-	lpa = phy_read_mmd(pcs, MDIO_MMD_VEND2, MII_LPA);
-	if (lpa < 0)
-		return;
-
-	switch (USXGMII_LPA_SPEED(lpa)) {
-	case USXGMII_SPEED_10:
-		pcs->speed = SPEED_10;
-		break;
-	case USXGMII_SPEED_100:
-		pcs->speed = SPEED_100;
-		break;
-	case USXGMII_SPEED_1000:
-		pcs->speed = SPEED_1000;
-		break;
-	case USXGMII_SPEED_2500:
-		pcs->speed = SPEED_2500;
-		break;
-	default:
-		break;
-	}
-
-	if (USXGMII_LPA_DUPLEX(lpa))
-		pcs->duplex = DUPLEX_FULL;
-	else
-		pcs->duplex = DUPLEX_HALF;
+	pcs->config(pcs->dev, link_an_mode, state->interface, state->advertising);
 }
 
 static void vsc9959_pcs_link_state(struct ocelot *ocelot, int port,
 				   struct phylink_link_state *state)
 {
 	struct felix *felix = ocelot_to_felix(ocelot);
-	struct phy_device *pcs = felix->pcs[port];
+	struct mdio_lynx_pcs *pcs = felix->pcs[port];
 
 	if (!pcs)
 		return;
 
-	pcs->speed = SPEED_UNKNOWN;
-	pcs->duplex = DUPLEX_UNKNOWN;
-	pcs->pause = 0;
-	pcs->asym_pause = 0;
+	pcs->get_state(pcs->dev, ocelot->ports[port]->phy_mode, state);
+}
 
-	switch (pcs->interface) {
-	case PHY_INTERFACE_MODE_SGMII:
-	case PHY_INTERFACE_MODE_QSGMII:
-		vsc9959_pcs_link_state_sgmii(pcs, state);
-		break;
-	case PHY_INTERFACE_MODE_2500BASEX:
-		vsc9959_pcs_link_state_2500basex(pcs, state);
-		break;
-	case PHY_INTERFACE_MODE_USXGMII:
-		vsc9959_pcs_link_state_usxgmii(pcs, state);
-		break;
-	default:
+static void vsc9959_pcs_link_up(struct ocelot *ocelot, int port,
+				unsigned int mode, phy_interface_t interface,
+				int speed, int duplex)
+{
+	struct felix *felix = ocelot_to_felix(ocelot);
+	struct mdio_lynx_pcs *pcs = felix->pcs[port];
+
+	if (!pcs)
 		return;
-	}
 
-	vsc9959_pcs_link_state_resolve(pcs, state);
+	pcs->link_up(pcs->dev, mode, interface, speed, duplex);
 }
 
 static int vsc9959_prevalidate_phy_mode(struct ocelot *ocelot, int port,
@@ -1127,6 +807,14 @@ static int vsc9959_mdio_bus_alloc(struct ocelot *ocelot)
 				  GFP_KERNEL);
 	if (!felix->pcs) {
 		dev_err(dev, "failed to allocate array for PCS PHYs\n");
+		return -ENOMEM;
+	}
+
+	felix->pcs = devm_kcalloc(dev, felix->info->num_ports,
+				  sizeof(struct mdio_lynx_pcs *),
+				  GFP_KERNEL);
+	if (!felix->pcs) {
+		dev_err(dev, "failed to allocate array for Lynx PCS devices\n");
 		return -ENOMEM;
 	}
 
@@ -1177,18 +865,25 @@ static int vsc9959_mdio_bus_alloc(struct ocelot *ocelot)
 
 	for (port = 0; port < felix->info->num_ports; port++) {
 		struct ocelot_port *ocelot_port = ocelot->ports[port];
-		struct phy_device *pcs;
-		bool is_c45 = false;
+		struct mdio_device *pcs_mdio;
 
-		if (ocelot_port->phy_mode == PHY_INTERFACE_MODE_USXGMII)
-			is_c45 = true;
-
-		pcs = get_phy_device(felix->imdio, port, is_c45);
-		if (IS_ERR(pcs))
+		if (dsa_is_unused_port(felix->ds, port))
 			continue;
 
-		pcs->interface = ocelot_port->phy_mode;
-		felix->pcs[port] = pcs;
+		if (ocelot_port->phy_mode == PHY_INTERFACE_MODE_INTERNAL)
+			continue;
+
+		pcs_mdio = mdio_device_create(felix->imdio, port);
+		if (IS_ERR(pcs_mdio))
+			continue;
+
+		felix->pcs[port] = mdio_lynx_pcs_create(pcs_mdio);
+		if (!felix->pcs[port]) {
+			// TODO
+			dev_err(dev, "failed to get Lynx PCS!\n");
+			mdio_device_free(pcs_mdio);
+			continue;
+		}
 
 		dev_info(dev, "Found PCS at internal MDIO address %d\n", port);
 	}
@@ -1202,12 +897,13 @@ static void vsc9959_mdio_bus_free(struct ocelot *ocelot)
 	int port;
 
 	for (port = 0; port < ocelot->num_phys_ports; port++) {
-		struct phy_device *pcs = felix->pcs[port];
+		struct mdio_lynx_pcs *pcs = felix->pcs[port];
 
 		if (!pcs)
 			continue;
 
-		put_device(&pcs->mdio.dev);
+		mdio_device_free(pcs->dev);
+		mdio_lynx_pcs_free(pcs);
 	}
 	mdiobus_unregister(felix->imdio);
 }
@@ -1415,6 +1111,7 @@ struct felix_info felix_info_vsc9959 = {
 	.pcs_init		= vsc9959_pcs_init,
 	.pcs_an_restart		= vsc9959_pcs_an_restart,
 	.pcs_link_state		= vsc9959_pcs_link_state,
+	.pcs_link_up		= vsc9959_pcs_link_up,
 	.prevalidate_phy_mode	= vsc9959_prevalidate_phy_mode,
 	.port_setup_tc          = vsc9959_port_setup_tc,
 	.port_sched_speed_set   = vsc9959_sched_speed_set,

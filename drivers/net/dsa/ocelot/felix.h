@@ -4,6 +4,8 @@
 #ifndef _MSCC_FELIX_H
 #define _MSCC_FELIX_H
 
+#include <linux/mdio-lynx-pcs.h>
+
 #define ocelot_to_felix(o)		container_of((o), struct felix, ocelot)
 #define FELIX_NUM_TC			8
 
@@ -34,6 +36,9 @@ struct felix_info {
 	void	(*pcs_an_restart)(struct ocelot *ocelot, int port);
 	void	(*pcs_link_state)(struct ocelot *ocelot, int port,
 				  struct phylink_link_state *state);
+	void	(*pcs_link_up)(struct ocelot *ocelot, int port,
+			       unsigned int mode, phy_interface_t interface,
+			       int speed, int duplex);
 	int	(*prevalidate_phy_mode)(struct ocelot *ocelot, int port,
 					phy_interface_t phy_mode);
 	int	(*port_setup_tc)(struct dsa_switch *ds, int port,
@@ -55,7 +60,7 @@ struct felix {
 	struct felix_info		*info;
 	struct ocelot			ocelot;
 	struct mii_bus			*imdio;
-	struct phy_device		**pcs;
+	struct mdio_lynx_pcs		**pcs;
 };
 
 #endif
