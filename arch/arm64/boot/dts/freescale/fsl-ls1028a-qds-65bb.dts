@@ -31,6 +31,7 @@
 		__overlay__ {
 			phy-handle = <&slot1_sgmii>;
 			phy-mode = "2500base-x";
+			status = "okay";
 		};
 	};
 
