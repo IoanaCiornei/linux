@@ -33,7 +33,9 @@ enum usxgmii_speed {
 	USXGMII_SPEED_10	= 0,
 	USXGMII_SPEED_100	= 1,
 	USXGMII_SPEED_1000	= 2,
+	USXGMII_SPEED_10000	= 3,
 	USXGMII_SPEED_2500	= 4,
+	USXGMII_SPEED_5000	= 5,
 };
 
 enum sgmii_speed {
@@ -102,6 +104,12 @@ static void lynx_pcs_get_state_usxgmii(struct mdio_device *pcs,
 		break;
 	case USXGMII_SPEED_2500:
 		state->speed = SPEED_2500;
+		break;
+	case USXGMII_SPEED_5000:
+		state->speed = SPEED_5000;
+		break;
+	case USXGMII_SPEED_10000:
+		state->speed = SPEED_10000;
 		break;
 	default:
 		break;
