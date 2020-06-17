@@ -9,7 +9,8 @@
 #include <linux/skbuff.h>
 #include <linux/ethtool.h>
 #include <linux/if_vlan.h>
-#include <linux/phy.h>
+#include <linux/phylink.h>
+#include <linux/mdio_lynx_pcs.h>
 
 #include "enetc_hw.h"
 
