@@ -1333,38 +1333,20 @@ static void enetc_disable_interrupts(struct enetc_ndev_priv *priv)
 		enetc_rxbdr_wr(&priv->si->hw, i, ENETC_RBIER, 0);
 }
 
-static void adjust_link(struct net_device *ndev)
-{
-	struct enetc_ndev_priv *priv = netdev_priv(ndev);
-	struct phy_device *phydev = ndev->phydev;
-
-	if (priv->active_offloads & ENETC_F_QBV)
-		enetc_sched_speed_set(ndev);
-
-	phy_print_status(phydev);
-}
-
 static int enetc_phy_connect(struct net_device *ndev)
 {
 	struct enetc_ndev_priv *priv = netdev_priv(ndev);
-	struct phy_device *phydev;
 	struct ethtool_eee edata;
+	int err;
 
-	if (!priv->phy_node)
-		return 0; /* phy-less mode */
+	if (!priv->phylink)
+		return 0;
 
-	phydev = of_phy_connect(ndev, priv->phy_node, &adjust_link,
-				0, priv->if_mode);
-	if (!phydev) {
-		dev_err(&ndev->dev, "could not attach to PHY\n");
-		return -ENODEV;
-	}
-
-	phy_attached_info(phydev);
+	err = phylink_of_phy_connect(priv->phylink, priv->enetc_node, 0);
 
 	/* disable EEE autoneg, until ENETC driver supports it */
 	memset(&edata, 0, sizeof(struct ethtool_eee));
-	phy_ethtool_set_eee(phydev, &edata);
+	phylink_ethtool_set_eee(priv->phylink, &edata);
 
 	return 0;
 }
@@ -1405,8 +1387,8 @@ int enetc_open(struct net_device *ndev)
 
 	enetc_enable_interrupts(priv);
 
-	if (ndev->phydev)
-		phy_start(ndev->phydev);
+	if (priv->phylink)
+		phylink_start(priv->phylink);
 	else
 		netif_carrier_on(ndev);
 
@@ -1419,8 +1401,8 @@ err_set_queues:
 err_alloc_rx:
 	enetc_free_tx_resources(priv);
 err_alloc_tx:
-	if (ndev->phydev)
-		phy_disconnect(ndev->phydev);
+	if (priv->phylink)
+		phylink_disconnect_phy(priv->phylink);
 err_phy_connect:
 	enetc_free_irqs(priv);
 
@@ -1434,9 +1416,9 @@ int enetc_close(struct net_device *ndev)
 
 	netif_tx_stop_all_queues(ndev);
 
-	if (ndev->phydev) {
-		phy_stop(ndev->phydev);
-		phy_disconnect(ndev->phydev);
+	if (priv->phylink) {
+		phylink_stop(priv->phylink);
+		phylink_disconnect_phy(priv->phylink);
 	} else {
 		netif_carrier_off(ndev);
 	}
