@@ -9,7 +9,8 @@
 #include <linux/skbuff.h>
 #include <linux/ethtool.h>
 #include <linux/if_vlan.h>
-#include <linux/phy.h>
+#include <linux/phylink.h>
+#include <linux/pcs-lynx.h>
 
 #include "enetc_hw.h"
 
@@ -242,8 +243,9 @@ struct enetc_ndev_priv {
 
 	struct psfp_cap psfp_cap;
 
-	struct device_node *phy_node;
+	struct device_node *enetc_node;
 	phy_interface_t if_mode;
+	struct phylink *phylink;
 };
 
 /* Messaging */

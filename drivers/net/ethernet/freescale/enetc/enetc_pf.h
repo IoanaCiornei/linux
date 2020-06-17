@@ -45,11 +45,15 @@ struct enetc_pf {
 
 	struct mii_bus *mdio; /* saved for cleanup */
 	struct mii_bus *imdio;
-	struct phy_device *pcs;
 
-	struct device_node *phy_node;
+	struct phylink_config phylink_config;
+	struct phylink *phylink;
 	phy_interface_t if_mode;
+	struct mdio_device *pcs;
 };
+
+#define phylink_to_enetc_pf(config) \
+	container_of((config), struct enetc_pf, phylink_config)
 
 int enetc_msg_psi_init(struct enetc_pf *pf);
 void enetc_msg_psi_free(struct enetc_pf *pf);

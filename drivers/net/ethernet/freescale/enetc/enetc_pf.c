@@ -793,62 +793,27 @@ static int enetc_of_get_phy(struct enetc_pf *pf)
 	struct device_node *mdio_np;
 	int err;
 
-	pf->phy_node = of_parse_phandle(np, "phy-handle", 0);
-	if (!pf->phy_node) {
-		if (!of_phy_is_fixed_link(np)) {
-			dev_err(dev, "PHY not specified\n");
-			return -ENODEV;
-		}
-
-		err = of_phy_register_fixed_link(np);
-		if (err < 0) {
-			dev_err(dev, "fixed link registration failed\n");
-			return err;
-		}
-
-		pf->phy_node = of_node_get(np);
-	}
-
 	mdio_np = of_get_child_by_name(np, "mdio");
 	if (mdio_np) {
 		of_node_put(mdio_np);
 		err = enetc_mdio_probe(pf);
-		if (err) {
-			of_node_put(pf->phy_node);
+		if (err)
 			return err;
-		}
 	}
 
 	err = of_get_phy_mode(np, &pf->if_mode);
 	if (err) {
 		dev_err(dev, "missing phy type\n");
-		of_node_put(pf->phy_node);
-		if (of_phy_is_fixed_link(np))
-			of_phy_deregister_fixed_link(np);
-		else
-			enetc_mdio_remove(pf);
-
 		return -EINVAL;
 	}
 
 	return 0;
 }
 
-static void enetc_of_put_phy(struct enetc_pf *pf)
-{
-	struct device_node *np = pf->si->pdev->dev.of_node;
-
-	if (np && of_phy_is_fixed_link(np))
-		of_phy_deregister_fixed_link(np);
-	if (pf->phy_node)
-		of_node_put(pf->phy_node);
-}
-
-static int enetc_imdio_init(struct enetc_pf *pf, bool is_c45)
+static int enetc_imdio_init(struct enetc_pf *pf)
 {
 	struct device *dev = &pf->si->pdev->dev;
 	struct enetc_mdio_priv *mdio_priv;
-	struct phy_device *pcs;
 	struct mii_bus *bus;
 	int err;
 
@@ -872,20 +837,10 @@ static int enetc_imdio_init(struct enetc_pf *pf, bool is_c45)
 		goto free_mdio_bus;
 	}
 
-	pcs = get_phy_device(bus, 0, is_c45);
-	if (IS_ERR(pcs)) {
-		err = PTR_ERR(pcs);
-		dev_err(dev, "cannot get internal PCS PHY (%d)\n", err);
-		goto unregister_mdiobus;
-	}
-
 	pf->imdio = bus;
-	pf->pcs = pcs;
 
 	return 0;
 
-unregister_mdiobus:
-	mdiobus_unregister(bus);
 free_mdio_bus:
 	devm_mdiobus_free(dev, bus);
 	return err;
@@ -893,58 +848,120 @@ free_mdio_bus:
 
 static void enetc_imdio_remove(struct enetc_pf *pf)
 {
-	if (pf->pcs)
-		put_device(&pf->pcs->mdio.dev);
 	if (pf->imdio)
 		mdiobus_unregister(pf->imdio);
 }
 
-static void enetc_configure_sgmii(struct phy_device *pcs)
+static void enetc_pcs_get_state(struct phylink_config *config,
+				    struct phylink_link_state *state)
 {
-	/* SGMII spec requires tx_config_Reg[15:0] to be exactly 0x4001
-	 * for the MAC PCS in order to acknowledge the AN.
-	 */
-	phy_write(pcs, MII_ADVERTISE, ADVERTISE_SGMII | ADVERTISE_LPACK);
+	struct enetc_pf *pf = phylink_to_enetc_pf(config);
 
-	phy_write(pcs, ENETC_PCS_IF_MODE,
-		  ENETC_PCS_IF_MODE_SGMII_EN |
-		  ENETC_PCS_IF_MODE_USE_SGMII_AN);
-
-	/* Adjust link timer for SGMII */
-	phy_write(pcs, ENETC_PCS_LINK_TIMER1, ENETC_PCS_LINK_TIMER1_VAL);
-	phy_write(pcs, ENETC_PCS_LINK_TIMER2, ENETC_PCS_LINK_TIMER2_VAL);
-
-	phy_write(pcs, MII_BMCR, BMCR_ANRESTART | BMCR_ANENABLE);
+	lynx_pcs_get_state(pf->pcs, pf->if_mode, state);
 }
 
-static void enetc_configure_2500basex(struct phy_device *pcs)
+static void enetc_pcs_an_restart(struct phylink_config *config)
 {
-	phy_write(pcs, ENETC_PCS_IF_MODE,
-		  ENETC_PCS_IF_MODE_SGMII_EN |
-		  ENETC_PCS_IF_MODE_SGMII_SPEED(ENETC_PCS_SPEED_2500));
+	struct enetc_pf *pf = phylink_to_enetc_pf(config);
 
-	phy_write(pcs, MII_BMCR, BMCR_SPEED1000 | BMCR_FULLDPLX | BMCR_RESET);
+	lynx_pcs_an_restart(pf->pcs, pf->if_mode);
 }
 
-static void enetc_configure_usxgmii(struct phy_device *pcs)
+static int enetc_pcs_config(struct phylink_config *config,
+				unsigned int mode, phy_interface_t interface,
+				const unsigned long *advertising)
 {
-	/* Configure device ability for the USXGMII Replicator */
-	phy_write_mmd(pcs, MDIO_MMD_VEND2, MII_ADVERTISE,
-		      ADVERTISE_SGMII |
-		      ADVERTISE_LPACK |
-		      USXGMII_ADVERTISE_FDX);
+	struct enetc_pf *pf = phylink_to_enetc_pf(config);
 
-	/* Restart PCS AN */
-	phy_write_mmd(pcs, MDIO_MMD_VEND2, MII_BMCR,
-		      USXGMII_BMCR_RESET |
-		      USXGMII_BMCR_AN_EN |
-		      USXGMII_BMCR_RST_AN);
+	return lynx_pcs_config(pf->pcs, mode, interface, advertising);
 }
 
-static int enetc_configure_serdes(struct enetc_ndev_priv *priv)
+static void enetc_pcs_link_up(struct phylink_config *config,
+				  unsigned int mode, phy_interface_t interface,
+				  int speed, int duplex)
 {
-	bool is_c45 = priv->if_mode == PHY_INTERFACE_MODE_USXGMII;
+	struct enetc_pf *pf = phylink_to_enetc_pf(config);
+
+	lynx_pcs_link_up(pf->pcs, mode, interface, speed, duplex);
+}
+
+static const struct phylink_pcs_ops enetc_pcs_phylink_ops = {
+	.pcs_get_state = enetc_pcs_get_state,
+	.pcs_config = enetc_pcs_config,
+	.pcs_an_restart = enetc_pcs_an_restart,
+	.pcs_link_up = enetc_pcs_link_up,
+};
+
+static void enetc_mac_validate(struct phylink_config *config,
+			   unsigned long *supported,
+			   struct phylink_link_state *state)
+{
+	struct enetc_pf *pf = phylink_to_enetc_pf(config);
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
+
+	if (state->interface != PHY_INTERFACE_MODE_NA &&
+	    state->interface != pf->if_mode) {
+		bitmap_zero(supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
+		return;
+	}
+
+	/* No half-duplex. */
+	phylink_set_port_modes(mask);
+	phylink_set(mask, Autoneg);
+	phylink_set(mask, Pause);
+	phylink_set(mask, Asym_Pause);
+	phylink_set(mask, 10baseT_Full);
+	phylink_set(mask, 100baseT_Full);
+	phylink_set(mask, 1000baseT_Full);
+
+	if (state->interface == PHY_INTERFACE_MODE_INTERNAL ||
+	    state->interface == PHY_INTERFACE_MODE_2500BASEX ||
+	    state->interface == PHY_INTERFACE_MODE_USXGMII) {
+		phylink_set(mask, 2500baseT_Full);
+		phylink_set(mask, 2500baseX_Full);
+	}
+
+	bitmap_and(supported, supported, mask,
+		   __ETHTOOL_LINK_MODE_MASK_NBITS);
+	bitmap_and(state->advertising, state->advertising, mask,
+		   __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+
+static void enetc_mac_config(struct phylink_config *config, unsigned int mode,
+			 const struct phylink_link_state *state)
+{
+
+}
+
+static void enetc_mac_link_up(struct phylink_config *config,
+			  struct phy_device *phy,
+			  unsigned int mode, phy_interface_t interface,
+			  int speed, int duplex,
+			  bool tx_pause, bool rx_pause)
+{
+}
+
+static void enetc_mac_link_down(struct phylink_config *config,
+			    unsigned int mode,
+			    phy_interface_t interface)
+{
+
+}
+
+static const struct phylink_mac_ops enetc_mac_phylink_ops = {
+	.validate = enetc_mac_validate,
+	.mac_config = enetc_mac_config,
+	.mac_link_up = enetc_mac_link_up,
+	.mac_link_down = enetc_mac_link_down,
+};
+
+static int enetc_phylink_create(struct enetc_ndev_priv *priv)
+{
 	struct enetc_pf *pf = enetc_si_priv(priv->si);
+	struct device *dev = &pf->si->pdev->dev;
+	struct device_node *np = dev->of_node;
+	struct mdio_device *mdiodev;
+	struct phylink *phylink;
 	int err;
 
 	if (priv->if_mode != PHY_INTERFACE_MODE_SGMII &&
@@ -952,26 +969,42 @@ static int enetc_configure_serdes(struct enetc_ndev_priv *priv)
 	    priv->if_mode != PHY_INTERFACE_MODE_USXGMII)
 		return 0;
 
-	err = enetc_imdio_init(pf, is_c45);
+	priv->enetc_node = np;
+
+	err = enetc_imdio_init(pf);
 	if (err)
 		return err;
 
-	switch (priv->if_mode) {
-	case PHY_INTERFACE_MODE_SGMII:
-		enetc_configure_sgmii(pf->pcs);
-		break;
-	case PHY_INTERFACE_MODE_2500BASEX:
-		enetc_configure_2500basex(pf->pcs);
-		break;
-	case PHY_INTERFACE_MODE_USXGMII:
-		enetc_configure_usxgmii(pf->pcs);
-		break;
-	default:
-		dev_err(&pf->si->pdev->dev, "Unsupported link mode %s\n",
-			phy_modes(priv->if_mode));
+	mdiodev = mdio_device_create(pf->imdio, 0);
+	if (!mdiodev) {
+		dev_err(dev, "cannot create PCS mdio device\n");
+		goto imdio_remove;
 	}
+	pf->pcs = mdiodev;
+
+	pf->phylink_config.dev = &pf->si->ndev->dev;
+	pf->phylink_config.type = PHYLINK_NETDEV;
+	pf->phylink_config.pcs_poll = true;
+
+	phylink = phylink_create(&pf->phylink_config,
+				 of_fwnode_handle(np), pf->if_mode,
+				 &enetc_mac_phylink_ops);
+
+	if (IS_ERR(phylink)) {
+		err = PTR_ERR(phylink);
+		goto pcs_free;
+	}
+	pf->phylink = phylink;
+
+	phylink_add_pcs(pf->phylink, &enetc_pcs_phylink_ops);
 
 	return 0;
+
+pcs_free:
+	mdio_device_free(pf->pcs);
+imdio_remove:
+	enetc_imdio_remove(pf);
+	return err;
 }
 
 static int enetc_pf_probe(struct pci_dev *pdev,
@@ -1023,7 +1056,6 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 	enetc_pf_netdev_setup(si, ndev, &enetc_ndev_ops);
 
 	priv = netdev_priv(ndev);
-	priv->phy_node = pf->phy_node;
 	priv->if_mode = pf->if_mode;
 
 	enetc_init_si_rings_params(priv);
@@ -1040,9 +1072,12 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 		goto err_alloc_msix;
 	}
 
-	err = enetc_configure_serdes(priv);
-	if (err)
-		dev_warn(&pdev->dev, "Attempted SerDes config but failed\n");
+	err = enetc_phylink_create(priv);
+	if (err) {
+		dev_err(&pdev->dev, "Could not create PHYLINK instance\n");
+		// TODO
+	}
+	priv->phylink = pf->phylink;
 
 	err = register_netdev(ndev);
 	if (err)
@@ -1060,7 +1095,7 @@ err_alloc_si_res:
 	si->ndev = NULL;
 	free_netdev(ndev);
 err_alloc_netdev:
-	enetc_of_put_phy(pf);
+	enetc_mdio_remove(pf);
 err_map_pf_space:
 	enetc_pci_remove(pdev);
 
@@ -1081,7 +1116,6 @@ static void enetc_pf_remove(struct pci_dev *pdev)
 
 	enetc_imdio_remove(pf);
 	enetc_mdio_remove(pf);
-	enetc_of_put_phy(pf);
 
 	enetc_free_msix(priv);
 
