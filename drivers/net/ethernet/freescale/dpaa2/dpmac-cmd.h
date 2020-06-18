@@ -24,6 +24,12 @@
 
 #define DPMAC_CMDID_GET_COUNTER		DPMAC_CMD(0x0c4)
 
+#define DPMAC_CMDID_SET_IRQ_ENABLE	DPMAC_CMD(0x012)
+#define DPMAC_CMDID_GET_IRQ_ENABLE	DPMAC_CMD(0x013)
+#define DPMAC_CMDID_SET_IRQ_MASK	DPMAC_CMD(0x014)
+#define DPMAC_CMDID_GET_IRQ_STATUS	DPMAC_CMD(0x016)
+#define DPMAC_CMDID_CLEAR_IRQ_STATUS	DPMAC_CMD(0x017)
+
 /* Macros for accessing command fields smaller than 1byte */
 #define DPMAC_MASK(field)        \
 	GENMASK(DPMAC_##field##_SHIFT + DPMAC_##field##_SIZE - 1, \
@@ -68,6 +74,40 @@ struct dpmac_cmd_get_counter {
 struct dpmac_rsp_get_counter {
 	u64 pad;
 	u64 counter;
+};
+
+struct dpmac_cmd_set_irq_enable {
+	u8 enable;
+	u8 pad[3];
+	u8 irq_index;
+};
+
+struct dpmac_cmd_get_irq_enable {
+	u32 pad;
+	u8 irq_index;
+};
+
+struct dpmac_rsp_get_irq_enable {
+	u8 enabled;
+};
+
+struct dpmac_cmd_set_irq_mask {
+	u32 mask;
+	u8 irq_index;
+};
+
+struct dpmac_cmd_get_irq_status {
+	u32 status;
+	u8 irq_index;
+};
+
+struct dpmac_rsp_get_irq_status {
+	u32 status;
+};
+
+struct dpmac_cmd_clear_irq_status {
+	u32 status;
+	u8 irq_index;
 };
 
 #endif /* _FSL_DPMAC_CMD_H */

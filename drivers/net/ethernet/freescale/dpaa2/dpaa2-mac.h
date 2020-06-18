@@ -8,6 +8,7 @@
 #include <linux/of_net.h>
 #include <linux/phylink.h>
 #include <linux/pcs-lynx.h>
+#include <linux/msi.h>
 
 #include "dpmac.h"
 #include "dpmac-cmd.h"
