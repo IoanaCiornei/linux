@@ -592,6 +592,52 @@ const struct phylink_mac_ops dsa_port_phylink_mac_ops = {
 	.mac_link_up = dsa_port_phylink_mac_link_up,
 };
 
+static void dsa_port_pcs_get_state(struct phylink_config *config,
+				   struct phylink_link_state *state)
+{
+	struct dsa_port *dp = container_of(config, struct dsa_port, pl_config);
+	struct dsa_switch *ds = dp->ds;
+
+	ds->ops->phylink_pcs_get_state(ds, dp->index, state);
+}
+
+static void dsa_port_pcs_an_restart(struct phylink_config *config)
+{
+	struct dsa_port *dp = container_of(config, struct dsa_port, pl_config);
+	struct dsa_switch *ds = dp->ds;
+
+	ds->ops->phylink_pcs_an_restart(ds, dp->index);
+}
+
+static int dsa_port_pcs_config(struct phylink_config *config,
+			       unsigned int mode, phy_interface_t interface,
+			       const unsigned long *advertising)
+{
+	struct dsa_port *dp = container_of(config, struct dsa_port, pl_config);
+	struct dsa_switch *ds = dp->ds;
+
+	return ds->ops->phylink_pcs_config(ds, dp->index, mode, interface,
+					   advertising);
+}
+
+static void dsa_port_pcs_link_up(struct phylink_config *config,
+				 unsigned int mode, phy_interface_t interface,
+				 int speed, int duplex)
+{
+	struct dsa_port *dp = container_of(config, struct dsa_port, pl_config);
+	struct dsa_switch *ds = dp->ds;
+
+	ds->ops->phylink_pcs_link_up(ds, dp->index, mode, interface, speed,
+				     duplex);
+}
+
+const struct phylink_pcs_ops dsa_port_phylink_pcs_ops = {
+	.pcs_get_state = dsa_port_pcs_get_state,
+	.pcs_config = dsa_port_pcs_config,
+	.pcs_an_restart = dsa_port_pcs_an_restart,
+	.pcs_link_up = dsa_port_pcs_link_up,
+};
+
 static int dsa_port_setup_phy_of(struct dsa_port *dp, bool enable)
 {
 	struct dsa_switch *ds = dp->ds;

@@ -1650,6 +1650,12 @@ static int dsa_slave_phy_setup(struct net_device *slave_dev)
 	if (ds->ops->get_phy_flags)
 		phy_flags = ds->ops->get_phy_flags(ds, dp->index);
 
+	if (ds->ops->phylink_pcs_get_state &&
+	    ds->ops->phylink_pcs_an_restart &&
+	    ds->ops->phylink_pcs_config &&
+	    ds->ops->phylink_pcs_link_up)
+		phylink_add_pcs(dp->pl, &dsa_port_phylink_pcs_ops);
+
 	ret = phylink_of_phy_connect(dp->pl, port_dn, phy_flags);
 	if (ret == -ENODEV && ds->slave_mii_bus) {
 		/* We could not connect to a designated PHY or SFP, so try to

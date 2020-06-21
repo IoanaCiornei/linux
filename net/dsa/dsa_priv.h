@@ -169,6 +169,7 @@ int dsa_port_vid_del(struct dsa_port *dp, u16 vid);
 int dsa_port_link_register_of(struct dsa_port *dp);
 void dsa_port_link_unregister_of(struct dsa_port *dp);
 extern const struct phylink_mac_ops dsa_port_phylink_mac_ops;
+extern const struct phylink_pcs_ops dsa_port_phylink_pcs_ops;
 
 /* slave.c */
 extern const struct dsa_device_ops notag_netdev_ops;

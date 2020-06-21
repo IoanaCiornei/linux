@@ -446,6 +446,18 @@ struct dsa_switch_ops {
 				       bool tx_pause, bool rx_pause);
 	void	(*phylink_fixed_state)(struct dsa_switch *ds, int port,
 				       struct phylink_link_state *state);
+	void	(*phylink_pcs_get_state)(struct dsa_switch *ds, int port,
+					 struct phylink_link_state *state);
+	int	(*phylink_pcs_config)(struct dsa_switch *ds, int port,
+				      unsigned int mode,
+				      phy_interface_t interface,
+				      const unsigned long *advertising);
+	void	(*phylink_pcs_an_restart)(struct dsa_switch *ds, int port);
+	void	(*phylink_pcs_link_up)(struct dsa_switch *ds, int port,
+				       unsigned int mode,
+				       phy_interface_t interface, int speed,
+				       int duplex);
+
 	/*
 	 * ethtool hardware statistics.
 	 */
