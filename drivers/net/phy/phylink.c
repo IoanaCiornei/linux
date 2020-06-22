@@ -43,6 +43,7 @@ struct phylink {
 	const struct phylink_mac_ops *mac_ops;
 	const struct phylink_pcs_ops *pcs_ops;
 	struct phylink_config *config;
+	struct phylink_pcs *pcs;
 	struct device *dev;
 	unsigned int old_link_state:1;
 
@@ -431,7 +432,7 @@ static void phylink_mac_pcs_an_restart(struct phylink *pl)
 	if (pl->link_config.an_enabled &&
 	    phy_interface_mode_is_8023z(pl->link_config.interface)) {
 		if (pl->pcs_ops)
-			pl->pcs_ops->pcs_an_restart(pl->config);
+			pl->pcs_ops->pcs_an_restart(pl->pcs);
 		else
 			pl->mac_ops->mac_an_restart(pl->config);
 	}
@@ -442,7 +443,7 @@ static void phylink_pcs_config(struct phylink *pl, bool force_restart,
 {
 	bool restart = force_restart;
 
-	if (pl->pcs_ops && pl->pcs_ops->pcs_config(pl->config,
+	if (pl->pcs_ops && pl->pcs_ops->pcs_config(pl->pcs,
 						   pl->cur_link_an_mode,
 						   state->interface,
 						   state->advertising))
@@ -498,7 +499,7 @@ static void phylink_mac_pcs_get_state(struct phylink *pl,
 	state->link = 1;
 
 	if (pl->pcs_ops)
-		pl->pcs_ops->pcs_get_state(pl->config, state);
+		pl->pcs_ops->pcs_get_state(pl->pcs, state);
 	else
 		pl->mac_ops->mac_pcs_get_state(pl->config, state);
 }
@@ -569,7 +570,7 @@ static void phylink_link_up(struct phylink *pl,
 	pl->cur_interface = link_state.interface;
 
 	if (pl->pcs_ops && pl->pcs_ops->pcs_link_up)
-		pl->pcs_ops->pcs_link_up(pl->config, pl->cur_link_an_mode,
+		pl->pcs_ops->pcs_link_up(pl->pcs, pl->cur_link_an_mode,
 					 pl->cur_interface,
 					 link_state.speed, link_state.duplex);
 
@@ -807,11 +808,19 @@ struct phylink *phylink_create(struct phylink_config *config,
 }
 EXPORT_SYMBOL_GPL(phylink_create);
 
-void phylink_add_pcs(struct phylink *pl, const struct phylink_pcs_ops *ops)
+/**
+ * phylink_set_pcs() - set the current PCS for phylink to use
+ * @pl: a pointer to a &struct phylink returned from phylink_create()
+ * @pcs: a pointer to the &struct phylink_pcs
+ *
+ * Bind the MAC PCS to phylink.
+ */
+void phylink_set_pcs(struct phylink *pl, struct phylink_pcs *pcs)
 {
-	pl->pcs_ops = ops;
+	pl->pcs = pcs;
+	pl->pcs_ops = pcs->ops;
 }
-EXPORT_SYMBOL_GPL(phylink_add_pcs);
+EXPORT_SYMBOL_GPL(phylink_set_pcs);
 
 /**
  * phylink_destroy() - cleanup and destroy the phylink instance
@@ -1156,6 +1165,8 @@ void phylink_start(struct phylink *pl)
 		break;
 	case MLO_AN_INBAND:
 		poll |= pl->config->pcs_poll;
+		if (pl->pcs)
+			poll |= pl->pcs->poll;
 		break;
 	}
 	if (poll)
