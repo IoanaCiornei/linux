@@ -311,6 +311,17 @@
 #define MDIO_PMA_LASI_TXALARM		0x0002	/* TX_ALARM enable/status */
 #define MDIO_PMA_LASI_RXALARM		0x0004	/* RX_ALARM enable/status */
 
+/* MAC and PHY tx_config_Reg[15:0] for USXGMII in-band auto-negotiation.*/
+#define LPA_USXGMII_FULL_DUPLEX		0x1000
+#define LPA_USXGMII_SPD_MSK		GENMASK(11, 9)
+#define LPA_USXGMII_10			0x0000
+#define LPA_USXGMII_100			0x0200
+#define LPA_USXGMII_1000		0x0400
+#define LPA_USXGMII_10000		0x0600
+#define LPA_USXGMII_2500		0x0800
+#define LPA_USXGMII_5000		0x0a00
+#define LPA_USXGMII_LINK		0x8000
+
 /* Mapping between MDIO PRTAD/DEVAD and mii_ioctl_data::phy_id */
 
 #define MDIO_PHY_ID_C45			0x8000
