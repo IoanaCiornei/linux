@@ -454,6 +454,36 @@ static void phylink_pcs_config(struct phylink *pl, bool force_restart,
 		phylink_mac_pcs_an_restart(pl);
 }
 
+static int phylink_change_inband_advert(struct phylink *pl)
+{
+	int ret;
+
+	if (!test_bit(PHYLINK_DISABLE_STOPPED, &pl->phylink_disable_state))
+		return 0;
+
+	if (!pl->pcs_ops) {
+		/* Legacy method */
+		phylink_mac_config(pl, &pl->link_config);
+		phylink_mac_pcs_an_restart(pl);
+		return 0;
+	}
+
+	/* Modern PCS-based method; update the advert at the PCS, and
+	 * restart negotiation if the pcs_config() helper indicates that
+	 * the programmed advertisement has changed.
+	 */
+	ret = pl->pcs_ops->pcs_config(pl->pcs, pl->cur_link_an_mode,
+				      pl->link_config.interface,
+				      pl->link_config.advertising);
+	if (ret < 0)
+		return ret;
+
+	if (ret > 0)
+		phylink_mac_pcs_an_restart(pl);
+
+	return 0;
+}
+
 static void phylink_mac_pcs_get_state(struct phylink *pl,
 				      struct phylink_link_state *state)
 {
@@ -1510,9 +1540,11 @@ int phylink_ethtool_set_pauseparam(struct phylink *pl,
 
 	config->pause = pause_state;
 
-	if (!pl->phydev && !test_bit(PHYLINK_DISABLE_STOPPED,
-				     &pl->phylink_disable_state))
-		phylink_pcs_config(pl, true, &pl->link_config);
+	/* Update our in-band advertisement, triggering a renegotiation if
+	 * the advertisement changed.
+	 */
+	if (!pl->phydev)
+		phylink_change_inband_advert(pl);
 
 	mutex_unlock(&pl->state_mutex);
 
