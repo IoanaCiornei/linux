@@ -1587,6 +1587,15 @@ void dsa_port_phylink_mac_change(struct dsa_switch *ds, int port, bool up)
 }
 EXPORT_SYMBOL_GPL(dsa_port_phylink_mac_change);
 
+void dsa_port_phylink_set_pcs(struct dsa_switch *ds, int port,
+			      struct phylink_pcs *pcs)
+{
+	struct dsa_port *dp = dsa_to_port(ds, port);
+
+	dp->pcs = pcs;
+}
+EXPORT_SYMBOL_GPL(dsa_port_phylink_set_pcs);
+
 static void dsa_slave_phylink_fixed_state(struct phylink_config *config,
 					  struct phylink_link_state *state)
 {
@@ -1639,6 +1648,7 @@ static int dsa_slave_phy_setup(struct net_device *slave_dev)
 		dp->pl_config.poll_fixed_state = true;
 	}
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	dp->pl = phylink_create(&dp->pl_config, of_fwnode_handle(port_dn), mode,
 				&dsa_port_phylink_mac_ops);
 	if (IS_ERR(dp->pl)) {
@@ -1646,7 +1656,10 @@ static int dsa_slave_phy_setup(struct net_device *slave_dev)
 			   "error creating PHYLINK: %ld\n", PTR_ERR(dp->pl));
 		return PTR_ERR(dp->pl);
 	}
+	if (dp->pcs)
+		phylink_set_pcs(dp->pl, dp->pcs);
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	if (ds->ops->get_phy_flags)
 		phy_flags = ds->ops->get_phy_flags(ds, dp->index);
 
@@ -1665,6 +1678,7 @@ static int dsa_slave_phy_setup(struct net_device *slave_dev)
 		}
 	}
 
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 	return ret;
 }
 

@@ -198,6 +198,7 @@ struct dsa_port {
 	struct devlink_port	devlink_port;
 	struct phylink		*pl;
 	struct phylink_config	pl_config;
+	struct phylink_pcs	*pcs;
 
 	struct list_head list;
 
@@ -750,6 +751,8 @@ int dsa_port_get_phy_strings(struct dsa_port *dp, uint8_t *data);
 int dsa_port_get_ethtool_phy_stats(struct dsa_port *dp, uint64_t *data);
 int dsa_port_get_phy_sset_count(struct dsa_port *dp);
 void dsa_port_phylink_mac_change(struct dsa_switch *ds, int port, bool up);
+void dsa_port_phylink_set_pcs(struct dsa_switch *ds, int port,
+			      struct phylink_pcs *pcs);
 
 struct dsa_tag_driver {
 	const struct dsa_device_ops *ops;
