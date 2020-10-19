@@ -75,6 +75,10 @@ static int qs6612_ack_interrupt(struct phy_device *phydev)
 {
 	int err;
 
+	/* The Interrupt Source register is not self-clearing, bits 4 and 5 are
+	 * cleared when MII_BMSR is read and bits 1 and 3 are cleared when
+	 * MII_EXPANSION is read
+	 */
 	err = phy_read(phydev, MII_QS6612_ISR);
 
 	if (err < 0)
